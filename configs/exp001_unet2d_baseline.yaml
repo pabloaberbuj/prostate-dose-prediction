@@ -1,0 +1,114 @@
+# ============================================================
+# Configuración base — Experimento baseline 2D U-Net
+# ============================================================
+# Cada experimento es un YAML. Los YAMLs se versionan en git.
+# Convención de nombres: expNNN_descripcion_corta.yaml
+# ============================================================
+
+experiment:
+  name: exp001_unet2d_baseline
+  description: "Baseline 2D U-Net con MAE loss, inputs CT+BODY+PTV+OARs masks"
+  seed: 42
+
+# ----------------------- Datos -----------------------
+data:
+  processed_dir: "data/processed"        # path a NPZs preprocesados
+  splits_file: "data/splits/splits_v1.json"
+  fold: 0                                 # cuál fold usar (si es CV)
+
+  # Inputs activos en este experimento
+  inputs:
+    use_ct: true
+    use_body_mask: true
+    use_ptv_mask: true
+    use_bladder_mask: true
+    use_rectum_mask: true
+    use_psdm: false                       # si true, reemplaza masks de PTV/OARs por PSDM
+    use_psdm_normalize_cm: 15.0           # normalización del PSDM (cm)
+
+  # Recorte axial al preprocesar (ya aplicado en NPZ)
+  z_margin_slices: 5
+
+  # Resolución
+  inplane_size: 256
+
+  # DataLoader
+  batch_size: 16
+  num_workers: 4
+  pin_memory: true
+
+# --------------------- Augmentation ---------------------
+augmentation:
+  flip_lr_prob: 0.5
+  rotation_degrees: 10
+  intensity_jitter_hu: 50    # ±50 HU sobre la CT antes de normalizar (~5% del rango)
+
+# ----------------------- Modelo -----------------------
+model:
+  arch: "unet2d"             # opciones: unet2d, unet25d, unet3d, hdunet, multiencoder
+  in_channels: 5             # CT + BODY + PTV + Bladder + Rectum (ajustar según inputs activos)
+  out_channels: 1
+  base_features: 32
+  depth: 4
+  upsample_mode: "bilinear"  # "bilinear" o "pixelshuffle" — evitar "transposed" por checkerboard
+  dropout: 0.0
+
+  # Solo para 2.5D
+  context_slices: 3          # 3 o 5
+
+# ----------------------- Loss -----------------------
+loss:
+  mae_weight: 1.0
+  use_moment_loss: false
+  moment_weight: 0.01
+  # Estructuras y momentos por estructura
+  moment_structures:
+    ptv: [1, 2, 10]
+    bladder: [1, 2, 10]
+    rectum: [1, 2, 10]
+
+# --------------------- Optimizer ---------------------
+optimizer:
+  name: "adamw"
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+
+scheduler:
+  name: "cosine"
+  warmup_epochs: 5
+  max_epochs: 200
+
+# --------------------- Training ---------------------
+training:
+  max_epochs: 200
+  precision: "16-mixed"
+  accumulate_grad_batches: 1
+  gradient_clip_val: 1.0
+  early_stopping_patience: 30
+  monitor_metric: "val/mae"
+  monitor_mode: "min"
+
+# --------------------- Logging ---------------------
+logging:
+  wandb_project: "prostate-dose-prediction"
+  wandb_entity: null                      # tu username de wandb, o null para default
+  log_dvh_every_n_epochs: 5
+  log_visual_every_n_epochs: 10
+  num_visual_samples: 3                   # cuántos pacientes mostrar en visualizaciones
+
+# --------------------- Evaluation (constraints clínicos) ---------------------
+# Estos se evalúan en post-proceso a partir de la dosis predicha.
+# Modificables para distintos fraccionamientos sin tocar el modelo.
+constraints:
+  prescription_dose_gy: 78.0
+  num_fractions: 39
+  ptv:
+    d95_target_pct: 100.0
+  rectum:
+    v70_max_pct: 25.0
+    v65_max_pct: 35.0
+    dmean_max_gy: null
+  bladder:
+    v70_max_pct: 35.0
+    v65_max_pct: 50.0
+    dmean_max_gy: null
