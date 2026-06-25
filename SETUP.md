@@ -6,6 +6,8 @@ Guía paso a paso para dejar el entorno funcionando en PC local y en la nube. Se
 
 - **GitHub** (o GitLab/Bitbucket): para alojar el repo. Crear el repo vacío `prostate-dose-prediction` antes de empezar.
 - **Weights & Biases** (https://wandb.ai): cuenta gratuita. Anotar el `entity` (tu username) y guardar la API key (Settings → API keys).
+- entity="pablo-aberbuj-mevaterapia-oncolog-a-radiante"
+- API key: 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
 - **Kaggle** (https://kaggle.com): cuenta + verificación por teléfono (necesario para acceso a GPU). En Settings → API → Create New Token, descargar `kaggle.json`.
 
 ## 2. Setup local (PC con RTX PRO 2000)
