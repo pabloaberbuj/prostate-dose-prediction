@@ -12,7 +12,7 @@ experiment:
 
 # ----------------------- Datos -----------------------
 data:
-  processed_dir: "data/processed"        # path a NPZs preprocesados
+  processed_dir: "C:/Pablo/ProstateDoseProject/processed"
   splits_file: "data/splits/splits_v1.json"
   fold: 0                                 # cuál fold usar (si es CV)
 
@@ -33,22 +33,28 @@ data:
   inplane_size: 256
 
   # DataLoader
-  batch_size: 16
-  num_workers: 4
-  pin_memory: true
+  batch_size: 1      # Con 12GB VRAM y Z~80 cortes, batch=1 es más seguro para empezar
+  num_workers: 0      # Windows: mantener en 0 (multiprocessing no funciona igual que Linux)
+  pin_memory: false   # Con num_workers=0 pin_memory no aporta y puede causar problemas
+
+  # Cache en RAM — deshabilitar con VM corriendo (ocupa ~19.5 GB).
+  # Training es compute-bound (12s/step GPU vs 0.3s I/O), el overhead sin cache es <3%.
+  # Reactivar cache_train cuando la VM esté apagada.
+  cache_train: true
+  cache_val: false    # Val siempre sin cache (60 pac × 1 batch no justifica 5 GB)
 
 # --------------------- Augmentation ---------------------
 augmentation:
   flip_lr_prob: 0.5
-  rotation_degrees: 10
-  intensity_jitter_hu: 50    # ±50 HU sobre la CT antes de normalizar (~5% del rango)
+  rotation_degrees: 0      # Desactivado: rotación en CPU es muy lenta con volúmenes grandes
+  intensity_jitter_hu: 50
 
 # ----------------------- Modelo -----------------------
 model:
   arch: "unet2d"             # opciones: unet2d, unet25d, unet3d, hdunet, multiencoder
   in_channels: 5             # CT + BODY + PTV + Bladder + Rectum (ajustar según inputs activos)
   out_channels: 1
-  base_features: 32
+  base_features: 16
   depth: 4
   upsample_mode: "bilinear"  # "bilinear" o "pixelshuffle" — evitar "transposed" por checkerboard
   dropout: 0.0

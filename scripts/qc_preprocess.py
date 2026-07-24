@@ -11,7 +11,6 @@ import argparse
 import sys
 from pathlib import Path
 
-import torch
 import pytorch_lightning as pl
 from omegaconf import OmegaConf
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
@@ -30,23 +29,15 @@ def parse_args():
     parser.add_argument("--fast-dev-run", action="store_true",
                         help="1 batch para debug rápido")
     parser.add_argument("--resume", type=str, default=None,
-                        help="Path a checkpoint para reanudar (restaura trainer/optimizer/epoch)")
-    parser.add_argument("--init-weights", type=str, default=None,
-                        help="Path a checkpoint del cual cargar SOLO los pesos del modelo "
-                             "(init desde otro experimento, ej. finetuning — NO resume el "
-                             "estado del trainer/optimizer/epoch, a diferencia de --resume)")
+                        help="Path a checkpoint para reanudar")
     parser.add_argument("--no-wandb", action="store_true",
                         help="Desactivar logging a W&B (usa CSVLogger local)")
-    parser.add_argument("--processed-dir", default=None,
-                        help="Override cfg.data.processed_dir (ruta a NPZs)")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     cfg = OmegaConf.load(args.config)
-    if args.processed_dir is not None:
-        cfg.data.processed_dir = args.processed_dir
 
     torch.set_float32_matmul_precision('high')
     pl.seed_everything(cfg.experiment.seed, workers=True)
@@ -57,33 +48,15 @@ def main():
     # Modelo
     model = DosePredictionModule(cfg)
 
-    if args.init_weights is not None:
-        # Carga SOLO los pesos (state_dict) de otro checkpoint como inicialización
-        # (ej. finetuning desde un experimento en otro dataset) — a diferencia de
-        # --resume, no toca optimizer/scheduler/epoch: el training arranca en epoch 0
-        # con el LR/horizonte de ESTA config.
-        _orig_torch_load = torch.load
-        def _load_no_weights_only(*a, **kw):
-            kw['weights_only'] = False
-            return _orig_torch_load(*a, **kw)
-        torch.load = _load_no_weights_only
-        print(f"Cargando pesos iniciales desde {args.init_weights} (init, NO resume)")
-        init_ckpt = torch.load(args.init_weights, map_location='cpu')
-        torch.load = _orig_torch_load
-        resultado = model.load_state_dict(init_ckpt['state_dict'], strict=True)
-        print(f"  state_dict cargado sin faltantes ni sobrantes: {resultado}")
-
     # Logger
     logger = False
     if not args.no_wandb:
         try:
             from pytorch_lightning.loggers import WandbLogger
-            tags = getattr(cfg.logging, 'tags', None)
             logger = WandbLogger(
                 project=cfg.logging.wandb_project,
                 entity=cfg.logging.wandb_entity,
                 name=cfg.experiment.name,
-                tags=list(tags) if tags is not None else None,
                 config=OmegaConf.to_container(cfg, resolve=True),
                 save_dir="lightning_logs",
             )
@@ -140,15 +113,6 @@ def main():
         fast_dev_run=args.fast_dev_run,
         log_every_n_steps=10,
     )
-
-    if args.resume is not None:
-        # PyTorch 2.6+ cambió weights_only=True por default, rompiendo el resume de
-        # checkpoints que incluyen OmegaConf DictConfig (mismo fix que evaluate.py).
-        _orig_torch_load = torch.load
-        def _load_no_weights_only(*a, **kw):
-            kw['weights_only'] = False
-            return _orig_torch_load(*a, **kw)
-        torch.load = _load_no_weights_only
 
     trainer.fit(model, datamodule=datamodule, ckpt_path=args.resume)
 

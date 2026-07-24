@@ -1,0 +1,81 @@
+W0715 21:00:47.377000 20104 .venv\Lib\site-packages\torch\utils\flop_counter.py:29] triton not found; flop counting will not work for triton kernels
+n_train=98  n_val=22  n_test=31
+
+=== Constraint RV65 ===
+  positivos: train=25/98  val=5/22  test=10/31
+  LogReg     : AUC=0.981 (IC95 [0.9292748917748918, 1.0])  sens=1.000 esp=0.381  umbral_op=0.029
+  GradBoost  : AUC=0.986 (IC95 [0.9428571428571428, 1.0])  sens=1.000 esp=0.238  umbral_op=0.001
+
+=== Constraint RV55 ===
+  positivos: train=19/98  val=5/22  test=7/31
+  LogReg     : AUC=0.917 (IC95 [0.7738095238095238, 1.0])  sens=1.000 esp=0.375  umbral_op=0.149
+  GradBoost  : AUC=0.923 (IC95 [0.815473901098901, 1.0])  sens=1.000 esp=0.333  umbral_op=0.003
+
+=== Constraint BV65 ===
+  positivos: train=24/98  val=7/22  test=10/31
+  LogReg     : AUC=0.938 (IC95 [0.838083028083028, 1.0])  sens=1.000 esp=0.571  umbral_op=0.147
+  GradBoost  : AUC=0.905 (IC95 [0.7769078947368421, 0.9954545454545455])  sens=1.000 esp=0.714  umbral_op=0.007
+
+==============================================================================
+TABLA COMPARATIVA — AUC [IC95] por constraint
+==============================================================================
+RV65: LogReg=0.981 [0.9292748917748918, 1.0]  |  GradBoost=0.986 [0.9428571428571428, 1.0]  |  U-Net finetune=0.919 [0.8043246005202527, 0.9914565826330533]
+RV55: LogReg=0.917 [0.7738095238095238, 1.0]  |  GradBoost=0.923 [0.815473901098901, 1.0]  |  U-Net finetune=0.839 [0.673315476190476, 0.9511193064182194]
+BV65: LogReg=0.938 [0.838083028083028, 1.0]  |  GradBoost=0.905 [0.7769078947368421, 0.9954545454545455]  |  U-Net finetune=0.933 [0.842099640125956, 1.0]
+
+==============================================================================
+IMPORTANCIA DE FEATURES
+==============================================================================
+
+RV65 — coeficientes LogReg (estandarizados):
+    overlap_rel_recto        +1.336
+    Solap_PTV_Rectum_cc      +1.113
+    overlap_rel_vejiga       +1.003
+    Solap_PTV_Bladder_cc     +0.742
+    VolBladder_cc            +0.575
+    VolPTV_cc                +0.478
+    VolRectum_cc             -0.330
+RV65 — permutation importance GradBoost (delta AUC):
+    overlap_rel_recto        +0.1567
+    Solap_PTV_Rectum_cc      +0.0957
+    Solap_PTV_Bladder_cc     +0.0146
+    VolPTV_cc                +0.0083
+    VolRectum_cc             +0.0079
+    overlap_rel_vejiga       +0.0033
+    VolBladder_cc            -0.0010
+
+RV55 — coeficientes LogReg (estandarizados):
+    overlap_rel_vejiga       +1.506
+    overlap_rel_recto        +1.467
+    VolPTV_cc                +0.693
+    VolBladder_cc            +0.622
+    Solap_PTV_Bladder_cc     -0.468
+    VolRectum_cc             -0.188
+    Solap_PTV_Rectum_cc      +0.101
+RV55 — permutation importance GradBoost (delta AUC):
+    Solap_PTV_Rectum_cc      +0.2683
+    VolRectum_cc             +0.1694
+    VolPTV_cc                +0.0855
+    VolBladder_cc            +0.0294
+    Solap_PTV_Bladder_cc     -0.0187
+    overlap_rel_vejiga       -0.0073
+    overlap_rel_recto        -0.0004
+
+BV65 — coeficientes LogReg (estandarizados):
+    overlap_rel_vejiga       +2.512
+    VolBladder_cc            -1.643
+    VolRectum_cc             -0.474
+    Solap_PTV_Rectum_cc      +0.460
+    Solap_PTV_Bladder_cc     +0.425
+    VolPTV_cc                -0.236
+    overlap_rel_recto        +0.229
+BV65 — permutation importance GradBoost (delta AUC):
+    overlap_rel_vejiga       +0.2987
+    VolBladder_cc            +0.0154
+    overlap_rel_recto        +0.0140
+    Solap_PTV_Rectum_cc      -0.0125
+    VolRectum_cc             -0.0083
+    Solap_PTV_Bladder_cc     -0.0062
+    VolPTV_cc                -0.0046
+
+Resumen guardado en C:\Pablo\ProstateDoseProject\repo\results\baseline_clasico\metrics_summary.json

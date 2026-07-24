@@ -1,0 +1,109 @@
+# ============================================================
+# Experimento 004 — U-Net 2.5D con PSDM (3 cortes de contexto axial)
+# Hereda exp002 (PSDM, ganador de inputs) y agrega contexto axial
+# (z-1, z, z+1) para reducir artefactos radiales por falta de
+# información de la geometría de arcos VMAT.
+# ============================================================
+
+experiment:
+  name: exp004_unet25d_3ctx
+  description: "2.5D: PSDM + contexto axial (3 cortes) sobre el ganador de exp002"
+  seed: 42
+
+# ----------------------- Datos -----------------------
+data:
+  processed_dir: "C:/Pablo/ProstateDoseProject/processed"
+  splits_file: "data/splits/splits_v1.json"
+  fold: 0
+
+  inputs:
+    use_ct: true
+    use_body_mask: true
+    use_ptv_mask: false           # reemplazado por PSDM
+    use_bladder_mask: false       # reemplazado por PSDM
+    use_rectum_mask: false        # reemplazado por PSDM
+    use_psdm: true                # CT + BODY + PSDM_PTV + PSDM_Rectum + PSDM_Bladder
+    use_psdm_normalize_cm: 15.0
+
+  context_slices: 3               # target ± 1, ver lightning_module._build_input
+
+  z_margin_slices: 5
+  inplane_size: 256
+
+  batch_size: 1
+  num_workers: 0
+  pin_memory: false
+
+  cache_train: false              # false por si no se puede cerrar la VM de W7
+  cache_val: false
+
+# --------------------- Augmentation ---------------------
+augmentation:
+  flip_lr_prob: 0.5
+  rotation_degrees: 0
+  intensity_jitter_hu: 50
+
+# ----------------------- Modelo -----------------------
+model:
+  arch: "unet2d"
+  in_channels: 15            # 5 canales base × 3 cortes de contexto
+  out_channels: 1
+  base_features: 16
+  depth: 4
+  upsample_mode: "bilinear"
+  dropout: 0.0
+
+# ----------------------- Loss -----------------------
+loss:
+  mae_weight: 1.0
+  use_moment_loss: false
+  moment_weight: 0.01
+  moment_structures:
+    ptv: [1, 2, 10]
+    bladder: [1, 2, 10]
+    rectum: [1, 2, 10]
+
+# --------------------- Optimizer ---------------------
+optimizer:
+  name: "adamw"
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+
+scheduler:
+  name: "cosine"
+  warmup_epochs: 5
+  max_epochs: 200
+
+# --------------------- Training ---------------------
+training:
+  max_epochs: 200
+  precision: "16-mixed"
+  accumulate_grad_batches: 1
+  gradient_clip_val: 1.0
+  early_stopping_patience: 30
+  monitor_metric: "val/mae"
+  monitor_mode: "min"
+
+# --------------------- Logging ---------------------
+logging:
+  wandb_project: "prostate-dose-prediction"
+  wandb_entity: null
+  tags: ["inputs:psdm", "arch:unet25d", "context:3", "stage:5"]
+  log_dvh_every_n_epochs: 5
+  log_visual_every_n_epochs: 10
+  num_visual_samples: 3
+
+# --------------------- Constraints clínicos ---------------------
+constraints:
+  prescription_dose_gy: 78.0
+  num_fractions: 39
+  ptv:
+    d95_target_pct: 100.0
+  rectum:
+    v70_max_pct: 25.0
+    v65_max_pct: 35.0
+    dmean_max_gy: null
+  bladder:
+    v70_max_pct: 35.0
+    v65_max_pct: 50.0
+    dmean_max_gy: null

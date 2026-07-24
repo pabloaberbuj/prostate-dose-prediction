@@ -1,0 +1,83 @@
+W0715 19:42:18.854000 19948 Lib\site-packages\torch\utils\flop_counter.py:29] triton not found; flop counting will not work for triton kernels
+Seed set to 42
+Cargando checkpoint: checkpoints/exp002_unet2d_psdm/epoch=191.ckpt
+Dispositivo: cuda
+[DataModule] n_slices fijo para padding: 80
+[DataModule] Sin cache — carga desde disco por batch (compute-bound, <3% overhead)
+[DataModule] Train: 98, Val: 22, Test: 31
+
+Infiriendo 22 pacientes de val (calibración umbral, hipofraccionado)...
+Val hipo (calibracion):   0%|          | 0/22 [00:00<?, ?it/s]Val hipo (calibracion):   5%|4         | 1/22 [00:01<00:30,  1.47s/it]Val hipo (calibracion):   9%|9         | 2/22 [00:02<00:25,  1.27s/it]Val hipo (calibracion):  14%|#3        | 3/22 [00:03<00:20,  1.10s/it]Val hipo (calibracion):  18%|#8        | 4/22 [00:04<00:17,  1.01it/s]Val hipo (calibracion):  23%|##2       | 5/22 [00:05<00:16,  1.06it/s]Val hipo (calibracion):  27%|##7       | 6/22 [00:06<00:15,  1.05it/s]Val hipo (calibracion):  32%|###1      | 7/22 [00:07<00:14,  1.06it/s]Val hipo (calibracion):  36%|###6      | 8/22 [00:07<00:13,  1.07it/s]Val hipo (calibracion):  41%|####      | 9/22 [00:08<00:12,  1.08it/s]Val hipo (calibracion):  45%|####5     | 10/22 [00:09<00:11,  1.08it/s]Val hipo (calibracion):  50%|#####     | 11/22 [00:10<00:10,  1.09it/s]Val hipo (calibracion):  55%|#####4    | 12/22 [00:11<00:09,  1.10it/s]Val hipo (calibracion):  59%|#####9    | 13/22 [00:12<00:08,  1.10it/s]Val hipo (calibracion):  64%|######3   | 14/22 [00:13<00:07,  1.11it/s]Val hipo (calibracion):  68%|######8   | 15/22 [00:14<00:06,  1.10it/s]Val hipo (calibracion):  73%|#######2  | 16/22 [00:15<00:05,  1.10it/s]Val hipo (calibracion):  77%|#######7  | 17/22 [00:16<00:04,  1.10it/s]Val hipo (calibracion):  82%|########1 | 18/22 [00:17<00:03,  1.12it/s]Val hipo (calibracion):  86%|########6 | 19/22 [00:17<00:02,  1.12it/s]Val hipo (calibracion):  91%|######### | 20/22 [00:18<00:01,  1.13it/s]Val hipo (calibracion):  95%|#########5| 21/22 [00:19<00:00,  1.13it/s]Val hipo (calibracion): 100%|##########| 22/22 [00:20<00:00,  1.11it/s]Val hipo (calibracion): 100%|##########| 22/22 [00:20<00:00,  1.07it/s]
+
+Evaluando 31 pacientes de test (hipofraccionado)...
+Test hipo:   0%|          | 0/31 [00:00<?, ?it/s]Test hipo:   3%|3         | 1/31 [00:00<00:26,  1.14it/s]Test hipo:   6%|6         | 2/31 [00:01<00:24,  1.19it/s]Test hipo:  10%|9         | 3/31 [00:02<00:25,  1.11it/s]Test hipo:  13%|#2        | 4/31 [00:03<00:23,  1.13it/s]Test hipo:  16%|#6        | 5/31 [00:04<00:23,  1.11it/s]Test hipo:  19%|#9        | 6/31 [00:05<00:22,  1.09it/s]Test hipo:  23%|##2       | 7/31 [00:06<00:22,  1.08it/s]Test hipo:  26%|##5       | 8/31 [00:07<00:20,  1.10it/s]Test hipo:  29%|##9       | 9/31 [00:08<00:20,  1.06it/s]Test hipo:  32%|###2      | 10/31 [00:09<00:19,  1.08it/s]Test hipo:  35%|###5      | 11/31 [00:09<00:18,  1.11it/s]Test hipo:  39%|###8      | 12/31 [00:10<00:16,  1.12it/s]Test hipo:  42%|####1     | 13/31 [00:11<00:15,  1.13it/s]Test hipo:  45%|####5     | 14/31 [00:12<00:15,  1.11it/s]Test hipo:  48%|####8     | 15/31 [00:13<00:14,  1.08it/s]Test hipo:  52%|#####1    | 16/31 [00:14<00:14,  1.06it/s]Test hipo:  55%|#####4    | 17/31 [00:15<00:13,  1.07it/s]Test hipo:  58%|#####8    | 18/31 [00:16<00:11,  1.09it/s]Test hipo:  61%|######1   | 19/31 [00:17<00:10,  1.09it/s]Test hipo:  65%|######4   | 20/31 [00:18<00:09,  1.11it/s]Test hipo:  68%|######7   | 21/31 [00:19<00:09,  1.07it/s]Test hipo:  71%|#######   | 22/31 [00:20<00:09,  1.02s/it]Test hipo:  74%|#######4  | 23/31 [00:21<00:08,  1.02s/it]Test hipo:  77%|#######7  | 24/31 [00:22<00:06,  1.02it/s]Test hipo:  81%|########  | 25/31 [00:23<00:05,  1.02it/s]Test hipo:  84%|########3 | 26/31 [00:24<00:04,  1.04it/s]Test hipo:  87%|########7 | 27/31 [00:25<00:03,  1.07it/s]Test hipo:  90%|######### | 28/31 [00:25<00:02,  1.10it/s]Test hipo:  94%|#########3| 29/31 [00:26<00:01,  1.12it/s]Test hipo:  97%|#########6| 30/31 [00:27<00:00,  1.15it/s]Test hipo: 100%|##########| 31/31 [00:28<00:00,  1.16it/s]Test hipo: 100%|##########| 31/31 [00:28<00:00,  1.09it/s]
+Métricas por paciente guardadas en results\exp002_unet2d_psdm_test_hipo_v2_balanced\per_patient_metrics.csv
+Plots DVH+slice:   0%|          | 0/31 [00:00<?, ?it/s]Plots DVH+slice:   3%|3         | 1/31 [00:00<00:11,  2.63it/s]Plots DVH+slice:   6%|6         | 2/31 [00:02<00:35,  1.24s/it]Plots DVH+slice:  10%|9         | 3/31 [00:04<00:43,  1.55s/it]Plots DVH+slice:  13%|#2        | 4/31 [00:04<00:28,  1.06s/it]Plots DVH+slice:  16%|#6        | 5/31 [00:04<00:21,  1.23it/s]Plots DVH+slice:  19%|#9        | 6/31 [00:05<00:17,  1.47it/s]Plots DVH+slice:  23%|##2       | 7/31 [00:05<00:13,  1.74it/s]Plots DVH+slice:  26%|##5       | 8/31 [00:05<00:11,  1.98it/s]Plots DVH+slice:  29%|##9       | 9/31 [00:06<00:09,  2.23it/s]Plots DVH+slice:  32%|###2      | 10/31 [00:06<00:09,  2.28it/s]Plots DVH+slice:  35%|###5      | 11/31 [00:07<00:08,  2.41it/s]Plots DVH+slice:  39%|###8      | 12/31 [00:07<00:07,  2.42it/s]Plots DVH+slice:  42%|####1     | 13/31 [00:07<00:07,  2.46it/s]Plots DVH+slice:  45%|####5     | 14/31 [00:08<00:06,  2.45it/s]Plots DVH+slice:  48%|####8     | 15/31 [00:08<00:06,  2.39it/s]Plots DVH+slice:  52%|#####1    | 16/31 [00:09<00:06,  2.32it/s]Plots DVH+slice:  55%|#####4    | 17/31 [00:09<00:05,  2.41it/s]Plots DVH+slice:  58%|#####8    | 18/31 [00:09<00:05,  2.50it/s]Plots DVH+slice:  61%|######1   | 19/31 [00:10<00:04,  2.53it/s]Plots DVH+slice:  65%|######4   | 20/31 [00:10<00:04,  2.66it/s]Plots DVH+slice:  68%|######7   | 21/31 [00:11<00:04,  2.49it/s]Plots DVH+slice:  71%|#######   | 22/31 [00:13<00:08,  1.10it/s]Plots DVH+slice:  74%|#######4  | 23/31 [00:13<00:05,  1.36it/s]Plots DVH+slice:  77%|#######7  | 24/31 [00:13<00:04,  1.64it/s]Plots DVH+slice:  81%|########  | 25/31 [00:14<00:03,  1.83it/s]Plots DVH+slice:  84%|########3 | 26/31 [00:14<00:02,  2.01it/s]Plots DVH+slice:  87%|########7 | 27/31 [00:16<00:03,  1.13it/s]Plots DVH+slice:  90%|######### | 28/31 [00:16<00:02,  1.40it/s]Plots DVH+slice:  94%|#########3| 29/31 [00:17<00:01,  1.69it/s]Plots DVH+slice:  97%|#########6| 30/31 [00:18<00:00,  1.08it/s]Plots DVH+slice: 100%|##########| 31/31 [00:19<00:00,  1.37it/s]Plots DVH+slice: 100%|##########| 31/31 [00:19<00:00,  1.63it/s]
+C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\sklearn\metrics\_ranking.py:469: UndefinedMetricWarning: Only one class is present in y_true. ROC AUC score is not defined in that case.
+  warnings.warn(
+C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\sklearn\metrics\_ranking.py:469: UndefinedMetricWarning: Only one class is present in y_true. ROC AUC score is not defined in that case.
+  warnings.warn(
+C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\sklearn\metrics\_ranking.py:469: UndefinedMetricWarning: Only one class is present in y_true. ROC AUC score is not defined in that case.
+  warnings.warn(
+2026-07-15 19:43:44,787 WARNING Subgrupo NArcos: n_positivos=5 insuficiente (<5) para IC estable — solo punto estimado (n=9)
+2026-07-15 19:43:44,789 WARNING Subgrupo NArcos: n_positivos=2 insuficiente (<5) para IC estable — solo punto estimado (n=9)
+2026-07-15 19:43:44,790 WARNING Subgrupo NArcos: n_positivos=4 insuficiente (<5) para IC estable — solo punto estimado (n=9)
+Resumen guardado en results\exp002_unet2d_psdm_test_hipo_v2_balanced\metrics_summary.json
+
+=== RESUMEN — dataset hipofraccionado ===
+Pacientes evaluados: 31
+MAE body:    2.364 ± 0.750 % (IC95 [2.136930687196793, 2.618362030867607])
+MAE Rectum:  7.042 ± 2.691 %
+MAE Bladder: 4.156 ± 2.182 %
+
+=== CAPA 3 — constraints operativos (umbral calibrado en VAL, congelado) ===
+
+RV65 (umbral clinico 15.0%, umbral operativo calibrado en val 18.43%):
+  Val calibracion: n=22 positivos=5 sens_val=1.000 esp_val=0.882
+  AUC (test): 0.952 (IC95 [0.8535064935064934, 1.0])
+  Sens: 0.800 (IC95 [0.5, 1.0])  Esp: 0.952 (IC95 [0.8421052631578947, 1.0])
+  TP=8 FP=1 TN=20 FN=2  PPV=0.889 NPV=0.909  prevalencia=0.323
+  Zona gris (n=13): sens=0.857 esp=0.833
+  Zona clara (n=18): sens=0.667 esp=1.000
+  Misses clinicamente significativos: 2 ['PT_b22bb34624f93487', 'PT_d547a53a2c4e2a4e']
+
+RV55 (umbral clinico 25.0%, umbral operativo calibrado en val 24.58%):
+  Val calibracion: n=22 positivos=5 sens_val=1.000 esp_val=0.706
+  AUC (test): 0.881 (IC95 [0.7142694805194805, 1.0])
+  Sens: 1.000 (IC95 [1.0, 1.0])  Esp: 0.625 (IC95 [0.4, 0.8181818181818182])
+  TP=7 FP=9 TN=15 FN=0  PPV=0.438 NPV=1.000  prevalencia=0.226
+  Zona gris (n=11): sens=1.000 esp=0.286
+  Zona clara (n=20): sens=1.000 esp=0.765
+  Misses clinicamente significativos: 5 ['PT_032778e328116f8e', 'PT_48486760d06b6f9d', 'PT_5d2c6ee9551e7804', 'PT_b22bb34624f93487', 'PT_d547a53a2c4e2a4e']
+
+BV65 (umbral clinico 15.0%, umbral operativo calibrado en val 12.25%):
+  Val calibracion: n=22 positivos=7 sens_val=1.000 esp_val=0.667
+  AUC (test): 0.952 (IC95 [0.8703282828282829, 1.0])
+  Sens: 1.000 (IC95 [1.0, 1.0])  Esp: 0.524 (IC95 [0.3157894736842105, 0.7394021739130432])
+  TP=10 FP=10 TN=11 FN=0  PPV=0.500 NPV=1.000  prevalencia=0.323
+  Zona gris (n=14): sens=1.000 esp=0.111
+  Zona clara (n=17): sens=1.000 esp=0.833
+  Misses clinicamente significativos: 1 ['PT_48486760d06b6f9d']
+
+Any-op-fail (calibrado, cualquier constraint operativo falla):
+  TP=16 FP=9 TN=6 FN=0  sens=1.000 esp=0.400
+
+=== DESGLOSE POR NARCOS ===
+
+2_arcos (n=22):
+  MAE body:    2.255 (IC95 [2.0341862110929054, 2.511077236587351])
+  MAE rectum:  6.609 (IC95 [5.7276877701282505, 7.580214014920321])
+  MAE bladder: 3.875 (IC95 [3.0972492224790833, 4.585185685211961])
+  RV65: AUC=0.988 (IC95 [0.9375, 1.0]) n=22 n_pos=5
+  RV55: AUC=0.918 (IC95 [0.7617167919799499, 1.0]) n=22 n_pos=5
+  BV65: AUC=0.990 (IC95 [0.9428571428571428, 1.0]) n=22 n_pos=6
+
+3_arcos (n=9):
+  MAE body:    2.631 (IC95 [2.1460470749272242, 3.348480713367462])
+  MAE rectum:  8.101 (IC95 [6.172252383497026, 10.256860412491692])
+  MAE bladder: 4.843 (IC95 [3.328614005115297, 6.91395441227489])
+  RV65: AUC=0.850 n=9 n_pos=5 — n_positivos=5 insuficiente (<5) para IC estable — solo punto estimado
+  RV55: AUC=1.000 n=9 n_pos=2 — n_positivos=2 insuficiente (<5) para IC estable — solo punto estimado
+  BV65: AUC=0.800 n=9 n_pos=4 — n_positivos=4 insuficiente (<5) para IC estable — solo punto estimado
+
+Casos arc-limited (mae_body > 8.0): 0

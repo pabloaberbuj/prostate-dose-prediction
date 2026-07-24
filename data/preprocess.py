@@ -66,36 +66,86 @@ def cargar_ct(carpeta: Path) -> sitk.Image:
     reader.SetFileNames(archivos)
     reader.MetaDataDictionaryArrayUpdateOn()
     imagen = reader.Execute()
+
+    # SimpleITK a veces lee CTs de Eclipse como 4D (dirección 4×4=16 elementos).
+    # Si eso ocurre, extraer el subvolumen 3D del primer componente.
+    if len(imagen.GetDirection()) == 16:
+        imagen = sitk.Extract(
+            imagen,
+            size=[imagen.GetSize()[0], imagen.GetSize()[1], imagen.GetSize()[2], 0],
+            index=[0, 0, 0, 0],
+        )
+        # Si aún tiene 4 dimensiones, forzar con Cast + GetArrayFromImage
+        if imagen.GetDimension() != 3:
+            array = sitk.GetArrayFromImage(imagen)
+            if array.ndim == 4:
+                array = array[0]  # tomar primer componente
+            imagen_3d = sitk.GetImageFromArray(array)
+            # Reconstruir dirección 3×3 desde la 4×4 original
+            dir16 = list(imagen.GetDirection())
+            dir9  = [dir16[0], dir16[1], dir16[2],
+                     dir16[4], dir16[5], dir16[6],
+                     dir16[8], dir16[9], dir16[10]]
+            imagen_3d.SetDirection(dir9)
+            imagen_3d.SetOrigin(imagen.GetOrigin()[:3])
+            imagen_3d.SetSpacing(imagen.GetSpacing()[:3])
+            imagen = imagen_3d
+
+    # Verificación final
+    if len(imagen.GetDirection()) != 9:
+        raise ValueError(f"CT sigue con dirección de longitud {len(imagen.GetDirection())} tras corrección")
+
     return imagen
 
 
 def cargar_rd(carpeta: Path) -> sitk.Image:
-    """Lee el archivo RD (dosis DICOM) y devuelve sitk.Image 3D en cGy."""
-    rds = list(carpeta.glob("RD*.dcm")) or list(carpeta.glob("rd*.dcm"))
-    if not rds:
-        # Buscar por SOPClassUID
-        for f in carpeta.glob("*.dcm"):
-            try:
-                ds = pydicom.dcmread(str(f), stop_before_pixels=True)
-                if "1.2.840.10008.5.1.4.1.1.481.2" in str(getattr(ds, 'SOPClassUID', '')):
-                    rds = [f]
-                    break
-            except Exception:
-                continue
-    if not rds:
+    """
+    Lee el archivo RD (dosis DICOM) y devuelve sitk.Image 3D en cGy.
+
+    DICOM RT Dose almacena los pixels como enteros sin signo.
+    La dosis real = pixel_array × DoseGridScaling, donde DoseGridScaling
+    está en Gy por unidad de pixel. El resultado está en Gy; multiplicamos
+    por 100 para obtener cGy.
+    sitk.ReadImage NO aplica DoseGridScaling automáticamente.
+    """
+    rd_path = None
+    for f in carpeta.glob("*.dcm"):
+        try:
+            ds = pydicom.dcmread(str(f), stop_before_pixels=True)
+            sop = str(getattr(ds, 'SOPClassUID', ''))
+            modality = str(getattr(ds, 'Modality', ''))
+            if '1.2.840.10008.5.1.4.1.1.481.2' in sop or modality == 'RTDOSE':
+                rd_path = f
+                break
+        except Exception:
+            continue
+
+    if rd_path is None:
         raise FileNotFoundError(f"No se encontró RD en {carpeta}")
-    ds = pydicom.dcmread(str(rds[0]))
-    escala = float(getattr(ds, 'DoseGridScaling', 1.0))
-    array_dosis = ds.pixel_array.astype(np.float32) * escala  # cGy
-    # Convertir a sitk.Image con geometría correcta
-    imagen = sitk.GetImageFromArray(array_dosis)
-    origen = list(map(float, ds.ImagePositionPatient))
-    imagen.SetOrigin(origen)
-    spacings = list(map(float, ds.PixelSpacing)) + [float(ds.GridFrameOffsetVector[1] - ds.GridFrameOffsetVector[0]) if len(ds.GridFrameOffsetVector) > 1 else 3.0]
-    imagen.SetSpacing([spacings[1], spacings[0], spacings[2]])
-    # Dirección: asumir ejes estándar
-    imagen.SetDirection([1,0,0, 0,1,0, 0,0,1])
-    return imagen
+
+    # Leer con pydicom para obtener pixels crudos y el factor de escala
+    ds = pydicom.dcmread(str(rd_path))
+    escala_gy = float(getattr(ds, 'DoseGridScaling', 1.0))  # Gy / pixel_value
+    array_cgy = ds.pixel_array.astype(np.float32) * escala_gy * 100.0  # → cGy
+
+    # Verificación: dosis máxima debe ser razonable (entre 50 y 200 Gy → 5000-20000 cGy)
+    dmax = array_cgy.max()
+    if dmax < 100 or dmax > 20000:
+        raise ValueError(
+            f"Dosis máxima fuera de rango esperado: {dmax:.1f} cGy "
+            f"(escala={escala_gy}, pixel_max={ds.pixel_array.max()})"
+        )
+
+    # Leer geometría con SimpleITK (origen, spacing, dirección)
+    imagen_sitk = sitk.ReadImage(str(rd_path))
+
+    # Construir imagen final con array correcto y geometría de SimpleITK
+    imagen_cgy = sitk.GetImageFromArray(array_cgy)
+    imagen_cgy.SetOrigin(imagen_sitk.GetOrigin())
+    imagen_cgy.SetSpacing(imagen_sitk.GetSpacing())
+    imagen_cgy.SetDirection(imagen_sitk.GetDirection())
+
+    return imagen_cgy
 
 
 def cargar_estructuras(carpeta: Path) -> dict:
@@ -198,19 +248,34 @@ def calcular_psdm(mascara: np.ndarray, spacing_zyx: tuple) -> np.ndarray:
 def normalizar_dosis(dosis_cgy: np.ndarray, mascara_ptv: np.ndarray,
                      prescripcion_cgy: float = 7800.0) -> tuple:
     """
-    Normaliza la dosis para que D95(PTV) = 100%.
-    Retorna (dosis_normalizada_pct, factor_escala).
-    factor_escala: multiplicar dosis_normalizada por (prescripcion_cgy / 100) para volver a cGy.
+    Normaliza la dosis para que D95(PTV) = 100% de la prescripción.
+
+    La dosis de salida está en % de prescripción:
+        100% = prescripcion_cgy = 78 Gy
+
+    factor_norm: factor multiplicativo aplicado a la dosis original.
+        dosis_norm_pct = dosis_cgy * factor_norm / prescripcion_cgy * 100
+        factor_norm ≈ 1.0 cuando el plan ya alcanza D95 ≈ prescripción.
+        factor_norm > 1.0 cuando D95 < prescripción (plan subóptimo).
+
+    Retorna (dosis_normalizada_pct, factor_norm).
     """
     dosis_ptv = dosis_cgy[mascara_ptv > 0]
     if len(dosis_ptv) == 0:
         raise ValueError("Máscara PTV vacía — no se puede calcular D95")
-    d95_cgy = float(np.percentile(dosis_ptv, 5))  # D95 = percentil 5 del histograma acumulativo inverso
+    # D95 = percentil 5 (5% del volumen recibe MENOS que este valor)
+    d95_cgy = float(np.percentile(dosis_ptv, 5))
     if d95_cgy <= 0:
         raise ValueError(f"D95 = {d95_cgy:.2f} cGy — valor inválido")
-    factor = prescripcion_cgy / d95_cgy
-    dosis_norm_pct = (dosis_cgy * factor / prescripcion_cgy) * 100.0
-    return dosis_norm_pct.astype(np.float32), float(factor)
+
+    # factor_norm ≈ 1.0: escala la dosis para que D95(PTV) = prescripción
+    factor_norm = prescripcion_cgy / d95_cgy
+
+    # Dosis normalizada en % de prescripción
+    # Con factor_norm aplicado, D95(PTV) queda exactamente en 100%
+    dosis_norm_pct = (dosis_cgy * factor_norm / prescripcion_cgy * 100.0)
+
+    return dosis_norm_pct.astype(np.float32), float(factor_norm)
 
 
 # ─── Remuestreo ──────────────────────────────────────────────────────────────

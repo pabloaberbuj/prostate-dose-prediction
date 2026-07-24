@@ -1,0 +1,254 @@
+W0713 15:43:44.251000 860 Lib\site-packages\torch\utils\flop_counter.py:29] triton not found; flop counting will not work for triton kernels
+Seed set to 42
+Using 16bit Automatic Mixed Precision (AMP)
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+\U0001f4a1 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+wandb: WARNING The anonymous setting has no effect and will be removed in a future version.
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from C:\Users\MEVATERAPIA_USR\_netrc.
+wandb: W&B API key is configured. Use `wandb login --relogin` to force relogin
+wandb: setting up run sphfz1ey
+wandb: Tracking run with wandb version 0.27.2
+wandb: Run data is saved locally in lightning_logs\wandb\run-20260713_154352-sphfz1ey
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run exp_hipo_001b_baseline_clean
+wandb:  View project at https://wandb.ai/pablo-aberbuj-mevaterapia-oncolog-a-radiante/prostate-dose-prediction
+wandb:  View run at https://wandb.ai/pablo-aberbuj-mevaterapia-oncolog-a-radiante/prostate-dose-prediction/runs/sphfz1ey
+C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\pytorch_lightning\callbacks\model_checkpoint.py:881: Checkpoint directory C:\Pablo\ProstateDoseProject\repo\checkpoints\exp_hipo_001b_baseline_clean exists and is not empty.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\pytorch_lightning\utilities\model_summary\model_summary.py:242: Precision 16-mixed is not supported by the model summary.  Estimated model size in MB will not be accurate. Using 32 bits instead.
+[DataModule] n_slices fijo para padding: 80
+[DataModule] Sin cache — carga desde disco por batch (compute-bound, <3% overhead)
+[DataModule] Train: 98, Val: 22, Test: 31
++-----------------------------------------------------+
+|   | Name    | Type         | Params | Mode  | FLOPs |
+|---+---------+--------------+--------+-------+-------|
+| 0 | model   | UNet2D       |  1.8 M | train |     0 |
+| 1 | loss_fn | CombinedLoss |      0 | train |     0 |
++-----------------------------------------------------+
+Trainable params: 1.8 M                                                        
+Non-trainable params: 0                                                        
+Total params: 1.8 M                                                            
+Total estimated model params size (MB): 7.249                                  
+Modules in train mode: 111                                                     
+Modules in eval mode: 0                                                        
+Total FLOPs: 0                                                                 
+C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\pytorch_lightning\utilities\_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\pytorch_lightning\trainer\connectors\data_connector.py:434: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=23` in the `DataLoader` to improve performance.
+C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\pytorch_lightning\trainer\connectors\data_connector.py:434: The 'train_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=23` in the `DataLoader` to improve performance.
+Metric val/mae improved. New best score: 16.482
+Metric val/mae improved by 0.137 >= min_delta = 0.0. New best score: 16.345
+Metric val/mae improved by 0.115 >= min_delta = 0.0. New best score: 16.230
+Metric val/mae improved by 0.114 >= min_delta = 0.0. New best score: 16.117
+Metric val/mae improved by 0.100 >= min_delta = 0.0. New best score: 16.016
+Metric val/mae improved by 0.096 >= min_delta = 0.0. New best score: 15.920
+Metric val/mae improved by 0.077 >= min_delta = 0.0. New best score: 15.843
+Metric val/mae improved by 0.084 >= min_delta = 0.0. New best score: 15.759
+Metric val/mae improved by 0.072 >= min_delta = 0.0. New best score: 15.686
+Metric val/mae improved by 0.076 >= min_delta = 0.0. New best score: 15.610
+Metric val/mae improved by 0.039 >= min_delta = 0.0. New best score: 15.571
+Metric val/mae improved by 0.086 >= min_delta = 0.0. New best score: 15.485
+Metric val/mae improved by 0.059 >= min_delta = 0.0. New best score: 15.426
+Metric val/mae improved by 0.082 >= min_delta = 0.0. New best score: 15.344
+Metric val/mae improved by 0.051 >= min_delta = 0.0. New best score: 15.293
+Metric val/mae improved by 0.048 >= min_delta = 0.0. New best score: 15.245
+Metric val/mae improved by 0.037 >= min_delta = 0.0. New best score: 15.209
+Metric val/mae improved by 0.060 >= min_delta = 0.0. New best score: 15.148
+Metric val/mae improved by 0.072 >= min_delta = 0.0. New best score: 15.076
+Metric val/mae improved by 0.022 >= min_delta = 0.0. New best score: 15.054
+Metric val/mae improved by 0.118 >= min_delta = 0.0. New best score: 14.937
+Metric val/mae improved by 0.007 >= min_delta = 0.0. New best score: 14.930
+Metric val/mae improved by 0.109 >= min_delta = 0.0. New best score: 14.820
+Metric val/mae improved by 0.027 >= min_delta = 0.0. New best score: 14.793
+Metric val/mae improved by 0.033 >= min_delta = 0.0. New best score: 14.760
+Metric val/mae improved by 0.103 >= min_delta = 0.0. New best score: 14.657
+Metric val/mae improved by 0.096 >= min_delta = 0.0. New best score: 14.561
+Metric val/mae improved by 0.075 >= min_delta = 0.0. New best score: 14.486
+Metric val/mae improved by 0.091 >= min_delta = 0.0. New best score: 14.395
+Metric val/mae improved by 0.083 >= min_delta = 0.0. New best score: 14.313
+Metric val/mae improved by 0.036 >= min_delta = 0.0. New best score: 14.277
+Metric val/mae improved by 0.066 >= min_delta = 0.0. New best score: 14.211
+Metric val/mae improved by 0.064 >= min_delta = 0.0. New best score: 14.146
+Metric val/mae improved by 0.063 >= min_delta = 0.0. New best score: 14.083
+Metric val/mae improved by 0.057 >= min_delta = 0.0. New best score: 14.026
+Metric val/mae improved by 0.011 >= min_delta = 0.0. New best score: 14.016
+Metric val/mae improved by 0.113 >= min_delta = 0.0. New best score: 13.902
+Metric val/mae improved by 0.020 >= min_delta = 0.0. New best score: 13.882
+Metric val/mae improved by 0.141 >= min_delta = 0.0. New best score: 13.741
+Metric val/mae improved by 0.073 >= min_delta = 0.0. New best score: 13.668
+Metric val/mae improved by 0.050 >= min_delta = 0.0. New best score: 13.618
+Metric val/mae improved by 0.064 >= min_delta = 0.0. New best score: 13.555
+Metric val/mae improved by 0.064 >= min_delta = 0.0. New best score: 13.491
+Metric val/mae improved by 0.060 >= min_delta = 0.0. New best score: 13.431
+Metric val/mae improved by 0.055 >= min_delta = 0.0. New best score: 13.376
+Metric val/mae improved by 0.057 >= min_delta = 0.0. New best score: 13.319
+Metric val/mae improved by 0.053 >= min_delta = 0.0. New best score: 13.266
+Metric val/mae improved by 0.039 >= min_delta = 0.0. New best score: 13.227
+Metric val/mae improved by 0.085 >= min_delta = 0.0. New best score: 13.141
+Metric val/mae improved by 0.083 >= min_delta = 0.0. New best score: 13.059
+Metric val/mae improved by 0.043 >= min_delta = 0.0. New best score: 13.016
+Metric val/mae improved by 0.105 >= min_delta = 0.0. New best score: 12.911
+Metric val/mae improved by 0.078 >= min_delta = 0.0. New best score: 12.833
+Metric val/mae improved by 0.069 >= min_delta = 0.0. New best score: 12.764
+Metric val/mae improved by 0.067 >= min_delta = 0.0. New best score: 12.697
+Metric val/mae improved by 0.045 >= min_delta = 0.0. New best score: 12.652
+Metric val/mae improved by 0.016 >= min_delta = 0.0. New best score: 12.636
+Metric val/mae improved by 0.157 >= min_delta = 0.0. New best score: 12.479
+Metric val/mae improved by 0.126 >= min_delta = 0.0. New best score: 12.353
+Metric val/mae improved by 0.018 >= min_delta = 0.0. New best score: 12.335
+Metric val/mae improved by 0.055 >= min_delta = 0.0. New best score: 12.280
+Metric val/mae improved by 0.049 >= min_delta = 0.0. New best score: 12.231
+Metric val/mae improved by 0.134 >= min_delta = 0.0. New best score: 12.098
+Metric val/mae improved by 0.089 >= min_delta = 0.0. New best score: 12.008
+Metric val/mae improved by 0.015 >= min_delta = 0.0. New best score: 11.994
+Metric val/mae improved by 0.158 >= min_delta = 0.0. New best score: 11.835
+Metric val/mae improved by 0.005 >= min_delta = 0.0. New best score: 11.830
+Metric val/mae improved by 0.206 >= min_delta = 0.0. New best score: 11.624
+Metric val/mae improved by 0.060 >= min_delta = 0.0. New best score: 11.564
+Metric val/mae improved by 0.004 >= min_delta = 0.0. New best score: 11.560
+Metric val/mae improved by 0.132 >= min_delta = 0.0. New best score: 11.428
+Metric val/mae improved by 0.112 >= min_delta = 0.0. New best score: 11.316
+Metric val/mae improved by 0.002 >= min_delta = 0.0. New best score: 11.313
+Metric val/mae improved by 0.202 >= min_delta = 0.0. New best score: 11.111
+Metric val/mae improved by 0.105 >= min_delta = 0.0. New best score: 11.006
+Metric val/mae improved by 0.018 >= min_delta = 0.0. New best score: 10.988
+Metric val/mae improved by 0.218 >= min_delta = 0.0. New best score: 10.770
+Metric val/mae improved by 0.019 >= min_delta = 0.0. New best score: 10.751
+Metric val/mae improved by 0.141 >= min_delta = 0.0. New best score: 10.610
+Metric val/mae improved by 0.248 >= min_delta = 0.0. New best score: 10.362
+Metric val/mae improved by 0.032 >= min_delta = 0.0. New best score: 10.330
+Metric val/mae improved by 0.068 >= min_delta = 0.0. New best score: 10.262
+Metric val/mae improved by 0.094 >= min_delta = 0.0. New best score: 10.168
+Metric val/mae improved by 0.224 >= min_delta = 0.0. New best score: 9.944
+Metric val/mae improved by 0.084 >= min_delta = 0.0. New best score: 9.860
+Metric val/mae improved by 0.085 >= min_delta = 0.0. New best score: 9.775
+Metric val/mae improved by 0.063 >= min_delta = 0.0. New best score: 9.713
+Metric val/mae improved by 0.034 >= min_delta = 0.0. New best score: 9.678
+Metric val/mae improved by 0.161 >= min_delta = 0.0. New best score: 9.518
+Metric val/mae improved by 0.028 >= min_delta = 0.0. New best score: 9.490
+Metric val/mae improved by 0.180 >= min_delta = 0.0. New best score: 9.310
+Metric val/mae improved by 0.106 >= min_delta = 0.0. New best score: 9.204
+Metric val/mae improved by 0.053 >= min_delta = 0.0. New best score: 9.151
+Metric val/mae improved by 0.050 >= min_delta = 0.0. New best score: 9.101
+Metric val/mae improved by 0.046 >= min_delta = 0.0. New best score: 9.055
+Metric val/mae improved by 0.062 >= min_delta = 0.0. New best score: 8.993
+Metric val/mae improved by 0.188 >= min_delta = 0.0. New best score: 8.804
+Metric val/mae improved by 0.064 >= min_delta = 0.0. New best score: 8.741
+Metric val/mae improved by 0.137 >= min_delta = 0.0. New best score: 8.604
+Metric val/mae improved by 0.161 >= min_delta = 0.0. New best score: 8.443
+Metric val/mae improved by 0.060 >= min_delta = 0.0. New best score: 8.384
+Metric val/mae improved by 0.184 >= min_delta = 0.0. New best score: 8.199
+Metric val/mae improved by 0.155 >= min_delta = 0.0. New best score: 8.044
+Metric val/mae improved by 0.020 >= min_delta = 0.0. New best score: 8.024
+Metric val/mae improved by 0.157 >= min_delta = 0.0. New best score: 7.868
+Metric val/mae improved by 0.112 >= min_delta = 0.0. New best score: 7.756
+Metric val/mae improved by 0.104 >= min_delta = 0.0. New best score: 7.652
+Metric val/mae improved by 0.044 >= min_delta = 0.0. New best score: 7.608
+Metric val/mae improved by 0.091 >= min_delta = 0.0. New best score: 7.517
+Metric val/mae improved by 0.106 >= min_delta = 0.0. New best score: 7.411
+Metric val/mae improved by 0.093 >= min_delta = 0.0. New best score: 7.317
+Metric val/mae improved by 0.087 >= min_delta = 0.0. New best score: 7.230
+Metric val/mae improved by 0.011 >= min_delta = 0.0. New best score: 7.218
+Metric val/mae improved by 0.111 >= min_delta = 0.0. New best score: 7.107
+Metric val/mae improved by 0.067 >= min_delta = 0.0. New best score: 7.040
+Metric val/mae improved by 0.165 >= min_delta = 0.0. New best score: 6.875
+Metric val/mae improved by 0.038 >= min_delta = 0.0. New best score: 6.837
+Metric val/mae improved by 0.039 >= min_delta = 0.0. New best score: 6.798
+Metric val/mae improved by 0.127 >= min_delta = 0.0. New best score: 6.671
+Metric val/mae improved by 0.066 >= min_delta = 0.0. New best score: 6.605
+Metric val/mae improved by 0.071 >= min_delta = 0.0. New best score: 6.534
+Metric val/mae improved by 0.213 >= min_delta = 0.0. New best score: 6.322
+Metric val/mae improved by 0.157 >= min_delta = 0.0. New best score: 6.165
+Metric val/mae improved by 0.046 >= min_delta = 0.0. New best score: 6.118
+Metric val/mae improved by 0.087 >= min_delta = 0.0. New best score: 6.032
+Metric val/mae improved by 0.194 >= min_delta = 0.0. New best score: 5.838
+Metric val/mae improved by 0.032 >= min_delta = 0.0. New best score: 5.806
+Metric val/mae improved by 0.090 >= min_delta = 0.0. New best score: 5.716
+Metric val/mae improved by 0.022 >= min_delta = 0.0. New best score: 5.694
+Metric val/mae improved by 0.078 >= min_delta = 0.0. New best score: 5.616
+Metric val/mae improved by 0.136 >= min_delta = 0.0. New best score: 5.480
+Metric val/mae improved by 0.055 >= min_delta = 0.0. New best score: 5.425
+Metric val/mae improved by 0.048 >= min_delta = 0.0. New best score: 5.377
+Metric val/mae improved by 0.028 >= min_delta = 0.0. New best score: 5.349
+Metric val/mae improved by 0.015 >= min_delta = 0.0. New best score: 5.334
+Metric val/mae improved by 0.170 >= min_delta = 0.0. New best score: 5.164
+Metric val/mae improved by 0.017 >= min_delta = 0.0. New best score: 5.146
+Metric val/mae improved by 0.126 >= min_delta = 0.0. New best score: 5.021
+Metric val/mae improved by 0.065 >= min_delta = 0.0. New best score: 4.956
+Metric val/mae improved by 0.023 >= min_delta = 0.0. New best score: 4.933
+Metric val/mae improved by 0.012 >= min_delta = 0.0. New best score: 4.921
+Metric val/mae improved by 0.104 >= min_delta = 0.0. New best score: 4.816
+Metric val/mae improved by 0.023 >= min_delta = 0.0. New best score: 4.794
+Metric val/mae improved by 0.057 >= min_delta = 0.0. New best score: 4.736
+Metric val/mae improved by 0.063 >= min_delta = 0.0. New best score: 4.674
+Metric val/mae improved by 0.045 >= min_delta = 0.0. New best score: 4.629
+Metric val/mae improved by 0.038 >= min_delta = 0.0. New best score: 4.590
+Metric val/mae improved by 0.048 >= min_delta = 0.0. New best score: 4.543
+Metric val/mae improved by 0.144 >= min_delta = 0.0. New best score: 4.399
+Metric val/mae improved by 0.050 >= min_delta = 0.0. New best score: 4.349
+Metric val/mae improved by 0.116 >= min_delta = 0.0. New best score: 4.233
+Metric val/mae improved by 0.006 >= min_delta = 0.0. New best score: 4.227
+Metric val/mae improved by 0.111 >= min_delta = 0.0. New best score: 4.116
+Metric val/mae improved by 0.031 >= min_delta = 0.0. New best score: 4.085
+Metric val/mae improved by 0.081 >= min_delta = 0.0. New best score: 4.004
+Metric val/mae improved by 0.064 >= min_delta = 0.0. New best score: 3.941
+Metric val/mae improved by 0.018 >= min_delta = 0.0. New best score: 3.923
+Metric val/mae improved by 0.074 >= min_delta = 0.0. New best score: 3.849
+Metric val/mae improved by 0.113 >= min_delta = 0.0. New best score: 3.735
+Metric val/mae improved by 0.088 >= min_delta = 0.0. New best score: 3.647
+Metric val/mae improved by 0.022 >= min_delta = 0.0. New best score: 3.625
+Metric val/mae improved by 0.033 >= min_delta = 0.0. New best score: 3.592
+Metric val/mae improved by 0.095 >= min_delta = 0.0. New best score: 3.497
+Metric val/mae improved by 0.027 >= min_delta = 0.0. New best score: 3.470
+Metric val/mae improved by 0.069 >= min_delta = 0.0. New best score: 3.402
+Metric val/mae improved by 0.036 >= min_delta = 0.0. New best score: 3.366
+Metric val/mae improved by 0.020 >= min_delta = 0.0. New best score: 3.346
+Metric val/mae improved by 0.014 >= min_delta = 0.0. New best score: 3.332
+Metric val/mae improved by 0.068 >= min_delta = 0.0. New best score: 3.264
+Metric val/mae improved by 0.021 >= min_delta = 0.0. New best score: 3.243
+Metric val/mae improved by 0.078 >= min_delta = 0.0. New best score: 3.166
+Metric val/mae improved by 0.001 >= min_delta = 0.0. New best score: 3.165
+Metric val/mae improved by 0.080 >= min_delta = 0.0. New best score: 3.085
+Metric val/mae improved by 0.061 >= min_delta = 0.0. New best score: 3.024
+Metric val/mae improved by 0.021 >= min_delta = 0.0. New best score: 3.002
+Metric val/mae improved by 0.033 >= min_delta = 0.0. New best score: 2.969
+Metric val/mae improved by 0.029 >= min_delta = 0.0. New best score: 2.940
+Metric val/mae improved by 0.006 >= min_delta = 0.0. New best score: 2.934
+Metric val/mae improved by 0.045 >= min_delta = 0.0. New best score: 2.888
+Metric val/mae improved by 0.032 >= min_delta = 0.0. New best score: 2.856
+Metric val/mae improved by 0.014 >= min_delta = 0.0. New best score: 2.842
+Metric val/mae improved by 0.123 >= min_delta = 0.0. New best score: 2.719
+Metric val/mae improved by 0.076 >= min_delta = 0.0. New best score: 2.643
+Metric val/mae improved by 0.012 >= min_delta = 0.0. New best score: 2.631
+Metric val/mae improved by 0.010 >= min_delta = 0.0. New best score: 2.621
+Metric val/mae improved by 0.012 >= min_delta = 0.0. New best score: 2.609
+Metric val/mae improved by 0.071 >= min_delta = 0.0. New best score: 2.538
+Metric val/mae improved by 0.009 >= min_delta = 0.0. New best score: 2.529
+Metric val/mae improved by 0.040 >= min_delta = 0.0. New best score: 2.489
+Metric val/mae improved by 0.014 >= min_delta = 0.0. New best score: 2.475
+Metric val/mae improved by 0.028 >= min_delta = 0.0. New best score: 2.448
+Metric val/mae improved by 0.015 >= min_delta = 0.0. New best score: 2.433
+Metric val/mae improved by 0.012 >= min_delta = 0.0. New best score: 2.420
+Metric val/mae improved by 0.005 >= min_delta = 0.0. New best score: 2.415
+Metric val/mae improved by 0.036 >= min_delta = 0.0. New best score: 2.379
+Metric val/mae improved by 0.032 >= min_delta = 0.0. New best score: 2.347
+Metric val/mae improved by 0.004 >= min_delta = 0.0. New best score: 2.343
+Metric val/mae improved by 0.040 >= min_delta = 0.0. New best score: 2.303
+Metric val/mae improved by 0.008 >= min_delta = 0.0. New best score: 2.295
+Metric val/mae improved by 0.014 >= min_delta = 0.0. New best score: 2.281
+Metric val/mae improved by 0.055 >= min_delta = 0.0. New best score: 2.226
+Metric val/mae improved by 0.017 >= min_delta = 0.0. New best score: 2.209
+Metric val/mae improved by 0.007 >= min_delta = 0.0. New best score: 2.203
+Metric val/mae improved by 0.000 >= min_delta = 0.0. New best score: 2.202
+Metric val/mae improved by 0.001 >= min_delta = 0.0. New best score: 2.201
+Metric val/mae improved by 0.017 >= min_delta = 0.0. New best score: 2.184
+Monitored metric val/mae did not improve in the last 80 records. Best score: 2.184. Signaling Trainer to stop.
+Epoch 417/539 ---------------- 98/98 0:03:38 •       0.49it/s v_num: z1ey      
+                                     0:00:00                  val/loss: 2.274  
+                                                              val/mae: 2.274   
+                                                              val/dvh_score:   
+                                                              2.379 train/loss:
+                                                              1.564 train/mae: 
+                                                              1.564            
+[1;34mwandb[0m: 
+[1;34mwandb[0m: ðŸš€ View run [33mexp_hipo_001b_baseline_clean[0m at: [34mhttps://wandb.ai/pablo-aberbuj-mevaterapia-oncolog-a-radiante/prostate-dose-prediction/runs/sphfz1ey[0m

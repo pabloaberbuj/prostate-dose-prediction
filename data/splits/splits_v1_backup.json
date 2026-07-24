@@ -339,6 +339,7 @@
     "PT_0f7bd899d3cf1a71",
     "PT_58e0a6bcd9227433",
     "PT_06e5bc446cd1fcfe",
+    "PT_505fcdbdbb6553b6",
     "PT_2c8330b8c7143b12",
     "PT_a8c8c3690da41f07",
     "PT_09f7b8cb8b05fb97",
@@ -405,7 +406,6 @@
     "n_total": 385,
     "n_train": 265,
     "n_val": 60,
-    "n_test": 59,
-    "leak_fix_2026-07-09": "PT_505fcdbdbb6553b6 estaba en val y test simultaneamente; se removio de test (queda en val). Ver CLAUDE_CODE_CONTEXT.md y splits_v1_backup.json (original con el leak)."
+    "n_test": 60
   }
 }
