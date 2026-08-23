@@ -1,0 +1,27 @@
+# Configuracion de la Tarea 7 (Proyecto 1) — extraccion de features en vivo desde el
+# autocontour del tomografo (CT-sim, antes de que exista el plan).
+#
+# Nombres de estructura confirmados por Pablo (autocontour del centro). Si en algun
+# caso el RS trae un nombre distinto (variante de nomenclatura, ROI duplicado, etc.),
+# extraer_features() falla con error explicito listando las estructuras disponibles
+# -- NO intenta adivinar. TODO (proxima etapa): matcheo manual desde la UI de
+# tomografo_tool cuando el nombre no coincide exacto, en vez de solo fallar.
+#
+# Ademas: el test de consistencia (Tarea 7) que compara features extraidas en vivo
+# contra las del CSV de entrenamiento NO se pudo correr todavia — la carpeta de DICOMs
+# crudos hipo ("dicoms hipofx") ya no existe en disco (se borro en una limpieza de
+# espacio, ver CLAUDE_CODE_CONTEXT_070826.md). Hace falta una carpeta con RS/CT de al
+# menos 5-10 pacientes ya presentes en data/dataset_p1.csv para correr ese test.
+
+estructuras:
+  ptv: "PTV_High"
+  rectum: "Rectum"
+  bladder: "Bladder"
+
+# Carpeta con un subconjunto de pacientes (CT + RS DICOM) ya presentes en
+# data/dataset_p1.csv, para el test de consistencia (Tarea 7). Null = no disponible.
+carpeta_test_consistencia: null
+
+# Tolerancia del test de consistencia (Tarea 7): diferencia relativa maxima aceptada
+# entre las features extraidas en vivo y las del CSV de entrenamiento.
+tolerancia_relativa: 0.01

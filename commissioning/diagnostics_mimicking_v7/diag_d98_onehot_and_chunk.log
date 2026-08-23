@@ -1,0 +1,23 @@
+C:\Pablo\ProstateDoseProject\repo\commissioning\diagnostics_mimicking_v7\diag_d98_onehot_and_chunk.py:177: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\torch\csrc\autograd\generated\python_variable_methods.cpp:839.)
+  print(f"    [paso manual Adam] mse={float(mse):.6f}  dvh_raw={float(dh['total']):.6f}  "
+[diag] device=cuda
+Warning: Multiple matches found for 'Bladder' in RTSTRUCT: ['Bladder', 'Bladder-PTV']. Using the first match.
+Warning: Multiple matches found for 'Rectum' in RTSTRUCT: ['Rectum', 'Rectum-PTV']. Using the first match.
+[diag] setup patient+engine: 12.6s
+
+=== PARTE B: gradiente de dvh_Dp_loss (D98) -- one-hot? estable? ===
+[unet_to_target] Calibración in-plane 256-grid: sp_x=1.6020mm sp_y=1.0916mm (ratio 1.468) origin=(-207.57,-154.75) [footprint 410.1x279.4mm]
+[diag] D98 target (crudo) = 1.630 Gy/fx
+
+--- leaf_margin_mm=5.0 ---
+    [estado inicial (init conformado)] Dp_1voxel(D98 crudo)=3.6970Gy  voxel_idx(dentro del PTV)=19787  params_no_cero_por_Dp=13168
+    [paso manual Adam] mse=2.810775  dvh_raw=42.324860  (tiempo total hasta aca: 57.1s)
+    [tras 1 paso manual de Adam (ya con smooth_d98_loss activo)] Dp_1voxel(D98 crudo)=3.6570Gy  voxel_idx(dentro del PTV)=19786  params_no_cero_por_Dp=13164
+    => voxel unico D98 CAMBIO (19787 -> 19786)  |  ventana smooth_d98_loss: 91/99 vóxeles en común entre los dos estados (margin=5.0)
+
+--- leaf_margin_mm=2.0 ---
+    [estado inicial (init conformado)] Dp_1voxel(D98 crudo)=3.6090Gy  voxel_idx(dentro del PTV)=19693  params_no_cero_por_Dp=13168
+    [paso manual Adam] mse=2.579484  dvh_raw=37.955940  (tiempo total hasta aca: 58.2s)
+    [tras 1 paso manual de Adam (ya con smooth_d98_loss activo)] Dp_1voxel(D98 crudo)=3.5640Gy  voxel_idx(dentro del PTV)=19724  params_no_cero_por_Dp=13164
+    => voxel unico D98 CAMBIO (19693 -> 19724)  |  ventana smooth_d98_loss: 84/99 vóxeles en común entre los dos estados (margin=2.0)

@@ -1,0 +1,53 @@
+W0818 10:53:51.555000 18844 Lib\site-packages\torch\utils\flop_counter.py:29] triton not found; flop counting will not work for triton kernels
+Seed set to 42
+Cargando checkpoint: checkpoints/exp002_unet2d_psdm/epoch=191.ckpt
+Dispositivo: cuda
+[DataModule] n_slices fijo para padding: 80
+[DataModule] Sin cache — carga desde disco por batch (compute-bound, <3% overhead)
+[DataModule] Train: 265, Val: 60, Test: 59
+
+Evaluando 59 pacientes de test...
+Test:   0%|          | 0/59 [00:00<?, ?it/s]Test:   2%|1         | 1/59 [00:02<02:41,  2.78s/it]Test:   3%|3         | 2/59 [00:06<03:25,  3.61s/it]Test:   5%|5         | 3/59 [00:09<02:50,  3.05s/it]Test:   7%|6         | 4/59 [00:11<02:37,  2.86s/it]Test:   8%|8         | 5/59 [00:14<02:21,  2.63s/it]Test:  10%|#         | 6/59 [00:16<02:14,  2.54s/it]Test:  12%|#1        | 7/59 [00:18<02:06,  2.44s/it]Test:  14%|#3        | 8/59 [00:20<02:01,  2.38s/it]Test:  15%|#5        | 9/59 [00:23<01:57,  2.36s/it]Test:  17%|#6        | 10/59 [00:25<01:55,  2.36s/it]Test:  19%|#8        | 11/59 [00:27<01:52,  2.34s/it]Test:  20%|##        | 12/59 [00:30<01:49,  2.33s/it]Test:  22%|##2       | 13/59 [00:32<01:46,  2.31s/it]Test:  24%|##3       | 14/59 [00:34<01:43,  2.29s/it]Test:  25%|##5       | 15/59 [00:37<01:45,  2.39s/it]Test:  27%|##7       | 16/59 [00:39<01:39,  2.30s/it]Test:  29%|##8       | 17/59 [00:41<01:38,  2.36s/it]Test:  31%|###       | 18/59 [00:44<01:35,  2.33s/it]Test:  32%|###2      | 19/59 [00:46<01:32,  2.31s/it]Test:  34%|###3      | 20/59 [00:48<01:31,  2.34s/it]Test:  36%|###5      | 21/59 [00:51<01:28,  2.33s/it]Test:  37%|###7      | 22/59 [00:53<01:24,  2.27s/it]Test:  39%|###8      | 23/59 [00:55<01:20,  2.24s/it]Test:  41%|####      | 24/59 [00:57<01:19,  2.27s/it]Test:  42%|####2     | 25/59 [01:00<01:17,  2.27s/it]Test:  44%|####4     | 26/59 [01:02<01:15,  2.29s/it]Test:  46%|####5     | 27/59 [01:05<01:16,  2.38s/it]Test:  47%|####7     | 28/59 [01:07<01:10,  2.26s/it]Test:  49%|####9     | 29/59 [01:09<01:08,  2.27s/it]Test:  51%|#####     | 30/59 [01:11<01:07,  2.31s/it]Test:  53%|#####2    | 31/59 [01:13<01:03,  2.28s/it]Test:  54%|#####4    | 32/59 [01:16<01:02,  2.32s/it]Test:  56%|#####5    | 33/59 [01:18<00:59,  2.29s/it]Test:  58%|#####7    | 34/59 [01:20<00:57,  2.28s/it]Test:  59%|#####9    | 35/59 [01:23<00:55,  2.31s/it]Test:  61%|######1   | 36/59 [01:25<00:52,  2.26s/it]Test:  63%|######2   | 37/59 [01:27<00:49,  2.26s/it]Test:  64%|######4   | 38/59 [01:29<00:47,  2.27s/it]Test:  66%|######6   | 39/59 [01:32<00:45,  2.27s/it]Test:  68%|######7   | 40/59 [01:34<00:45,  2.41s/it]Test:  69%|######9   | 41/59 [01:37<00:41,  2.30s/it]Test:  71%|#######1  | 42/59 [01:39<00:39,  2.32s/it]Test:  73%|#######2  | 43/59 [01:41<00:36,  2.27s/it]Test:  75%|#######4  | 44/59 [01:43<00:34,  2.31s/it]Test:  76%|#######6  | 45/59 [01:46<00:32,  2.29s/it]Test:  78%|#######7  | 46/59 [01:48<00:29,  2.30s/it]Test:  80%|#######9  | 47/59 [01:50<00:27,  2.29s/it]Test:  81%|########1 | 48/59 [01:53<00:26,  2.37s/it]Test:  83%|########3 | 49/59 [01:55<00:23,  2.36s/it]Test:  85%|########4 | 50/59 [01:57<00:21,  2.35s/it]Test:  86%|########6 | 51/59 [02:00<00:18,  2.34s/it]Test:  88%|########8 | 52/59 [02:03<00:17,  2.46s/it]Test:  90%|########9 | 53/59 [02:05<00:14,  2.35s/it]Test:  92%|#########1| 54/59 [02:07<00:11,  2.35s/it]Test:  93%|#########3| 55/59 [02:09<00:09,  2.32s/it]Test:  95%|#########4| 56/59 [02:11<00:06,  2.30s/it]Test:  97%|#########6| 57/59 [02:14<00:04,  2.32s/it]Test:  98%|#########8| 58/59 [02:16<00:02,  2.32s/it]Test: 100%|##########| 59/59 [02:19<00:00,  2.33s/it]Test: 100%|##########| 59/59 [02:19<00:00,  2.36s/it]
+
+Métricas guardadas en results\exp002_test59\test_metrics.csv
+Resumen guardado en results\exp002_test59\summary.json
+
+=== RESUMEN ===
+Pacientes evaluados: 59
+MAE body:    1.766 ± 0.431 %
+MAE PTV:     1.413 ± 0.789 %
+MAE Rectum:  3.774 ± 1.689 %
+MAE Bladder: 2.153 ± 1.014 %
+Dose score:  1.766
+DVH score:   1.164
+
+Tasa de acuerdo en constraints:
+  rectum_V70: 94.9% (real cumple: 59, pred cumple: 56)
+  rectum_V65: 100.0% (real cumple: 59, pred cumple: 59)
+  bladder_V70: 98.3% (real cumple: 59, pred cumple: 58)
+  bladder_V65: 100.0% (real cumple: 59, pred cumple: 59)
+
+=== Bloque 1 — PTV, puntos DVH (bias / MAE, % Rx) ===
+  D95: bias=-0.294  MAE=0.819  (n=59)
+  D98: bias=-0.258  MAE=0.907  (n=59)
+  D99: bias=-0.122  MAE=1.102  (n=59)
+  D01cc: bias=-0.291  MAE=0.869  (n=59)
+
+=== Bloque 2 — OARs, puntos DVH (bias / MAE, % Rx) ===
+  rectum_Dmean: bias=+0.048  MAE=2.174  (n=59)
+  rectum_D30: bias=-1.091  MAE=5.044  (n=59)
+  rectum_D15: bias=-1.954  MAE=3.068  (n=59)
+  rectum_D10: bias=-1.415  MAE=2.121  (n=59)
+  bladder_Dmean: bias=+0.297  MAE=0.956  (n=59)
+
+=== Bloque 3 — OARs, puntos V (bias / MAE, pp de volumen) ===
+  rectum_V65: bias=-0.458  MAE=2.465  (n=59)
+  rectum_V55: bias=-0.847  MAE=3.615  (n=59)
+  rectum_V50: bias=-1.111  MAE=4.340  (n=59)
+  rectum_V45: bias=-1.057  MAE=4.730  (n=59)
+  rectum_V40: bias=-0.500  MAE=4.822  (n=59)
+  bladder_V65: bias=+0.072  MAE=0.699  (n=59)
+  bladder_V55: bias=+0.111  MAE=0.980  (n=59)
+  bladder_V50: bias=+0.225  MAE=1.117  (n=59)
+  bladder_V45: bias=+0.368  MAE=1.262  (n=59)
+  bladder_V40: bias=+0.396  MAE=1.475  (n=59)

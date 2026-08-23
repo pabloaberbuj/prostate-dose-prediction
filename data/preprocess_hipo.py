@@ -48,7 +48,12 @@ from preprocess import (  # noqa: E402
     remuestrear_a_ct,
     downsample_inplane,
     recortar_axial,
+    centroide_fisico,
+    extensiones_mascara,
+    calcular_recorte_plano,
+    aplicar_recorte_plano,
     INPLANE_SIZE,
+    INPLANE_CROP_MM,
     Z_MARGIN,
     CT_HU_MIN,
     CT_HU_MAX,
@@ -188,13 +193,14 @@ def procesar_paciente_hipo(anonid: str, carpeta_dicom: Path, output_dir: Path,
     #    antes de escalar por s y antes de downsamplear/recortar)
     dosis_cgy = remuestrear_a_ct(rd_sitk, ct_sitk, sitk.sitkLinear)
 
-    # 5. CT normalizada [-1, 1]
+    # 5. CT normalizada [-1, 1] (sobre grilla nativa completa, antes de recortar)
     ct_array = sitk.GetArrayFromImage(ct_sitk).astype(np.float32)
     ct_norm  = np.clip(ct_array, CT_HU_MIN, CT_HU_MAX)
     ct_norm  = (ct_norm - CT_HU_MIN) / (CT_HU_MAX - CT_HU_MIN)
     ct_norm  = ct_norm * 2.0 - 1.0
 
-    # 6. D95 nativo (Gy) y s = 70.0 / D95(PTV) — mismo criterio que el C#
+    # 6. D95 nativo (Gy) y s = 70.0 / D95(PTV) — mismo criterio que el C# (sobre mascara nativa
+    #    completa, sin recortar: el PTV siempre entra en la caja de recorte)
     dosis_ptv_cgy = dosis_cgy[ptv_mask > 0]
     if len(dosis_ptv_cgy) == 0:
         raise ValueError("Mascara PTV vacia — no se puede calcular D95")
@@ -205,8 +211,44 @@ def procesar_paciente_hipo(anonid: str, carpeta_dicom: Path, output_dir: Path,
     #    solo cambia prescripcion_cgy)
     dosis_norm_pct, s_d95 = normalizar_dosis(dosis_cgy, ptv_mask, prescripcion_cgy=PRESCRIPCION_CGY)
 
-    # 8. PSDM en espacio CT nativo (antes de downsample)
     spacing_mm = ct_sitk.GetSpacing()
+
+    # 7b. Recorte en el plano (misma caja de INPLANE_CROP_MM que normo, centrada en el
+    #     centroide del PTV) — ver preprocess.py::procesar_paciente para el razonamiento
+    #     completo. OAR/PTV clipeado -> error (revisar a mano); BODY clipeado -> warning.
+    cx, cy = centroide_fisico(ptv_mask, ct_sitk)
+    half_mm = INPLANE_CROP_MM / 2.0
+
+    clip_oar = {}
+    for nombre, mascara in [('PTV', ptv_mask), ('Rectum', rectum_mask), ('Bladder', bladder_mask)]:
+        ext = extensiones_mascara(mascara, ct_sitk, cx, cy)
+        excedente = {d: round(v - half_mm, 1) for d, v in ext.items() if v > half_mm}
+        if excedente:
+            clip_oar[nombre] = excedente
+    if clip_oar:
+        raise ValueError(
+            f"{anonid}: recorte de {INPLANE_CROP_MM/10:.0f}cm corta OAR/PTV — revisar caso "
+            f"a mano (excedentes mm: {clip_oar})"
+        )
+
+    ext_body = extensiones_mascara(body_mask, ct_sitk, cx, cy)
+    clip_body = {d: round(v - half_mm, 1) for d, v in ext_body.items() if v > half_mm}
+    if clip_body:
+        log.warning(
+            f"{anonid}: BODY lateral clipeado {clip_body} mm por el recorte de "
+            f"{INPLANE_CROP_MM/10:.0f}cm, sin afectar OARs/PTV — impacto esperado en piel/grasa "
+            f"de zona de dosis baja"
+        )
+
+    rec = calcular_recorte_plano(ct_sitk, cx, cy, INPLANE_CROP_MM)
+    ct_norm        = aplicar_recorte_plano(ct_norm,        rec, fill_value=-1.0)
+    dosis_norm_pct = aplicar_recorte_plano(dosis_norm_pct, rec, fill_value=0.0)
+    ptv_mask       = aplicar_recorte_plano(ptv_mask,       rec, fill_value=0)
+    body_mask      = aplicar_recorte_plano(body_mask,      rec, fill_value=0)
+    rectum_mask    = aplicar_recorte_plano(rectum_mask,    rec, fill_value=0)
+    bladder_mask   = aplicar_recorte_plano(bladder_mask,   rec, fill_value=0)
+
+    # 8. PSDM sobre la mascara nativa YA RECORTADA (mismo spacing nativo)
     spacing_zyx_mm = (spacing_mm[2], spacing_mm[1], spacing_mm[0])
 
     psdm_ptv     = calcular_psdm(ptv_mask,     spacing_zyx_mm)
@@ -241,7 +283,11 @@ def procesar_paciente_hipo(anonid: str, carpeta_dicom: Path, output_dir: Path,
     # 11. Guardar NPZ
     meta = {
         'anonid':          anonid,
-        'spacing_mm':      list(spacing_mm),
+        'spacing_mm':      list(spacing_mm),  # spacing NATIVO — no confundir con el efectivo del array
+        'effective_inplane_spacing_mm': INPLANE_CROP_MM / INPLANE_SIZE,  # fijo: 1.953mm/px
+        'crop_lado_mm':        INPLANE_CROP_MM,
+        'centroide_ptv_xy_mm': [round(cx, 2), round(cy, 2)],
+        'body_clip_mm':        clip_body,
         'z_range':         list(z_range),
         'factor_norm':     s_d95,
         's_D95':           s_d95,
@@ -282,6 +328,7 @@ def procesar_paciente_hipo(anonid: str, carpeta_dicom: Path, output_dir: Path,
         'D95_delivered_Gy':   round(d95_delivered_gy, 4),
         'PTV_name_usado':     nombre_ptv,
         'Status':             status,
+        'body_clip_mm':       clip_body,
     }
 
 
@@ -378,6 +425,11 @@ def main():
         log.info(f"s_D95 usado:       min={min(s_d95):.4f} median={float(np.median(s_d95)):.4f} max={max(s_d95):.4f}")
         log.info(f"D95 PTV downsampleado (% pres): {np.mean(d95_down):.2f} +/- {np.std(d95_down):.2f} (deberia ser ~100)")
         log.info(f"PTV usado por paciente: {dict(ptv_usado)}")
+
+        clipeados = [r for r in ok if r.get('body_clip_mm')]
+        log.info(f"BODY clipeado (lateral, esperado): {len(clipeados)}/{len(ok)} pacientes")
+        for r in clipeados:
+            log.info(f"  {r['anonid']}: {r['body_clip_mm']}")
 
 
 if __name__ == "__main__":

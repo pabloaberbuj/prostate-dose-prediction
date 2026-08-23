@@ -1,0 +1,139 @@
+# ============================================================
+# Experimento hipo 003 — fine-tuning desde exp002 (normo), DATASET v3 (201 pac.,
+# incluye Rejected + UnApproved replanificados-como-hipo)
+# ============================================================
+# Copia de exp_hipo_002_finetune.yaml. Arquitectura, inputs, loss, optimizador,
+# batch/augmentation IDENTICOS. Cambios reales: splits (v3, 130/30/40) e
+# init/horizonte:
+#
+#   - Init: TODOS los pesos de checkpoints/exp002_unet2d_psdm/epoch=191.ckpt
+#     (via --init-weights, carga SOLO el state_dict del modelo).
+#   - LR = 1e-5 (LR exp002 / 10). Full finetune, sin freezing.
+#   - Horizonte escalado (a diferencia de 002/002b, que dejaron max_epochs=100
+#     FIJO sin escalar porque partian de un init ya bueno): esta vez el pedido
+#     explicito es escalar tambien el finetune. factor = 265 (train normo) /
+#     n_train_nuevo (130) = 2.0385. Aplicado sobre la base de 002/002b
+#     (max_epochs=100, patience=30):
+#       max_epochs = round(100 * 2.0385) = 204
+#       patience   = round(30  * 2.0385) = 61
+#     scheduler.max_epochs = 204, self-consistente con training.max_epochs (regla
+#     del proyecto: nunca dejarlo en el horizonte de otro experimento).
+#
+# Ver CLAUDE_CODE_CONTEXT_070826.md / HIPOFX_KICKOFF.md.
+# ============================================================
+
+experiment:
+  name: exp_hipo_003_finetune_v3
+  description: "Fine-tuning hipofraccionado dataset v3 (201 pac, incl. Rejected+UnApproved) desde exp002 (normo): full finetune, LR=1e-5, horizonte escalado x2.0385 (204 epochs)"
+  seed: 42
+
+# ----------------------- Datos -----------------------
+data:
+  processed_dir: "C:/Pablo/ProstateDoseProject/processed_hipo"
+  splits_file: "data/splits/splits_hipo_v3_unet.json"
+  fold: 0
+
+  inputs:
+    use_ct: true
+    use_body_mask: true
+    use_ptv_mask: false           # reemplazado por PSDM
+    use_bladder_mask: false       # reemplazado por PSDM
+    use_rectum_mask: false        # reemplazado por PSDM
+    use_psdm: true                # CT + BODY + PSDM_PTV + PSDM_Rectum + PSDM_Bladder
+    use_psdm_normalize_cm: 15.0
+
+  z_margin_slices: 5
+  inplane_size: 256
+
+  batch_size: 1
+  num_workers: 0
+  pin_memory: false
+
+  cache_train: false
+  cache_val: false
+
+# --------------------- Augmentation ---------------------
+augmentation:
+  flip_lr_prob: 0.5
+  rotation_degrees: 0
+  intensity_jitter_hu: 50
+
+# ----------------------- Modelo -----------------------
+model:
+  arch: "unet2d"
+  in_channels: 5             # CT + BODY + PSDM_PTV + PSDM_Rectum + PSDM_Bladder
+  out_channels: 1
+  base_features: 16
+  depth: 4
+  upsample_mode: "bilinear"
+  dropout: 0.0
+  context_slices: 3
+
+# ----------------------- Loss -----------------------
+loss:
+  mae_weight: 1.0
+  use_moment_loss: false
+  moment_weight: 0.01
+  moment_structures:
+    ptv: [1, 2, 10]
+    bladder: [1, 2, 10]
+    rectum: [1, 2, 10]
+
+# --------------------- Optimizer ---------------------
+optimizer:
+  name: "adamw"
+  lr: 1.0e-5           # LR_exp002 (1e-4) / 10 — full finetune sin destruir el prior de PTV
+  weight_decay: 1.0e-5
+
+scheduler:
+  name: "cosine"
+  warmup_epochs: 5   # nota: no está conectado en configure_optimizers() (dead config, ver lightning_module.py)
+  max_epochs: 204     # horizonte REAL de este run — self-consistente. Escalado desde el
+                      # horizonte de 002/002b (100) por factor=265/130=2.0385 (ver cabecera).
+
+# --------------------- Training ---------------------
+training:
+  max_epochs: 204
+  precision: "16-mixed"
+  accumulate_grad_batches: 1
+  gradient_clip_val: 1.0
+  early_stopping_patience: 61   # escalado desde 30 por el mismo factor 2.0385
+  monitor_metric: "val/mae"
+  monitor_mode: "min"
+
+# --------------------- Logging ---------------------
+logging:
+  wandb_project: "prostate-dose-prediction"
+  wandb_entity: null
+  log_dvh_every_n_epochs: 5
+  log_visual_every_n_epochs: 10
+  num_visual_samples: 3
+  tags:
+    - "dataset:hipo_v3"
+    - "arch:unet2d"
+    - "inputs:psdm"
+    - "init:normo_exp002"
+
+# --------------------- Constraints clínicos (hipofraccionado) ---------------------
+# Protocolo: 70 Gy / 28 fx (2.5 Gy/fx). Constraints operativos con señal suficiente
+# (ver D5, CLAUDE_CODE_CONTEXT.md): Rectum V65<15 / V55<25, Bladder V65<15.
+# V45 (ambos OAR) y Dmean son de solo registro, no clasificación — ver evaluate_hipo.py,
+# que además calibra el punto de operación en val, congelado, y no usa este bloque
+# directamente (constraints hardcoded ahí para trazabilidad del criterio D5).
+constraints:
+  prescription_dose_gy: 70.0
+  num_fractions: 28
+  ptv:
+    d95_target_pct: 100.0
+  rectum:
+    v70_max_pct: null
+    v65_max_pct: 15.0
+    v55_max_pct: 25.0
+    v45_max_pct: 45.0
+    dmean_max_gy: 40.0   # solo registro
+  bladder:
+    v70_max_pct: null
+    v65_max_pct: 15.0
+    v55_max_pct: 25.0
+    v45_max_pct: 45.0
+    dmean_max_gy: 40.0   # solo registro

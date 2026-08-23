@@ -1,0 +1,120 @@
+# ============================================================
+# exp_normo_3dunet — U-Net 3D sobre NORMO (GT RapidPlan, sustrato limpio)
+# A/B directo contra exp002 (2D): mismo split, mismo test=59, misma
+# normalizacion D95(PTV)=100%, mismos inputs (CT+BODY+PSDM x3, ahora en 3D).
+# Pregunta primaria: ¿el 3D baja el |ΔV| del hombro OAR (banda media
+# 40-80%Rx) por debajo del piso-de-vecinos de ~4pp de normo (D3/D5,
+# results/diagnostico_piso)?
+#
+# Config confirmada por Bloque 1 (results/probe_mem_3d.json): volumen 'full'
+# (256x256x80, mismo FOV que exp002 -- A/B limpio, sin confound de crop) solo
+# entra con base_features=16 (24/32 dan OOM/timeout en cualquier combo AMP/
+# checkpoint). Con base_features=16, AMP=True + grad_checkpointing=False es la
+# combinacion mas rapida que entra con margen (7.77GB reservado, 0.52s/paso) --
+# no hace falta el checkpointing (que solo cuesta tiempo) porque ya hay margen
+# de sobra sin el. Alternativa 'crop' (128x240, bbox real+2cm) permite hasta
+# base_features=32 pero se descarta para este experimento por introducir un
+# segundo confound (FOV distinto) en la pregunta de arquitectura 2D-vs-3D.
+# ============================================================
+
+experiment:
+  name: exp_normo_3dunet
+  description: "U-Net 3D sobre normo (RapidPlan) — A/B arquitectura vs exp002 (2D), mismo split/inputs"
+  seed: 42
+
+# ----------------------- Datos -----------------------
+data:
+  processed_dir: "C:/Pablo/ProstateDoseProject/processed"
+  splits_file: "data/splits/splits_v1.json"   # mismo split que exp002, test=59 (leak ya corregido)
+  fold: 0
+
+  inputs:
+    use_ct: true
+    use_body_mask: true
+    use_ptv_mask: false
+    use_bladder_mask: false
+    use_rectum_mask: false
+    use_psdm: true                # CT + BODY + PSDM_PTV + PSDM_Rectum + PSDM_Bladder (volumetrico, ver preprocess.py::calcular_psdm)
+    use_psdm_normalize_cm: 15.0
+
+  z_margin_slices: 5
+  inplane_size: 256
+
+  context_slices: 1               # 3D ve Z nativamente via conv3d — sin trucos de shift 2.5D
+
+  batch_size: 1
+  num_workers: 0
+  pin_memory: false
+
+  cache_train: false              # volumenes 3D pesan mas en RAM; evaluar tras ver estimado de DataModule
+  cache_val: false
+
+# --------------------- Augmentation ---------------------
+augmentation:
+  flip_lr_prob: 0.5
+  rotation_degrees: 0
+  intensity_jitter_hu: 50
+
+# ----------------------- Modelo -----------------------
+model:
+  arch: "unet3d"
+  in_channels: 5                  # CT + BODY + PSDM_PTV + PSDM_Rectum + PSDM_Bladder
+  out_channels: 1
+  base_features: 16               # confirmado por probe_mem_3d.json (unico que entra en volumen 'full')
+  depth: 4
+  dropout: 0.0
+  grad_checkpointing: false       # no hace falta — 7.77GB reservados de 12GB, margen de sobra sin el
+
+# ----------------------- Loss -----------------------
+loss:
+  mae_weight: 1.0
+  use_moment_loss: false
+  moment_weight: 0.01
+  moment_structures:
+    ptv: [1, 2, 10]
+    bladder: [1, 2, 10]
+    rectum: [1, 2, 10]
+
+# --------------------- Optimizer ---------------------
+optimizer:
+  name: "adamw"
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+
+scheduler:
+  name: "cosine"
+  warmup_epochs: 5
+  max_epochs: 200                 # mismo horizonte que exp002 (mismo n_train=265, batch=1 -> mismos steps/epoca)
+
+# --------------------- Training ---------------------
+training:
+  max_epochs: 200
+  precision: "16-mixed"           # AMP — confirmar necesidad/beneficio contra probe_mem_3d.json
+  accumulate_grad_batches: 1
+  gradient_clip_val: 1.0
+  early_stopping_patience: 30
+  monitor_metric: "val/mae"
+  monitor_mode: "min"
+
+# --------------------- Logging ---------------------
+logging:
+  wandb_project: "prostate-dose-prediction"
+  wandb_entity: null
+  log_dvh_every_n_epochs: 5
+  log_visual_every_n_epochs: 10
+  num_visual_samples: 3
+
+# --------------------- Constraints clínicos ---------------------
+constraints:
+  prescription_dose_gy: 78.0
+  num_fractions: 39
+  ptv:
+    d95_target_pct: 100.0
+  rectum:
+    v70_max_pct: 25.0
+    v65_max_pct: 35.0
+    dmean_max_gy: null
+  bladder:
+    v70_max_pct: 35.0
+    v65_max_pct: 50.0
+    dmean_max_gy: null

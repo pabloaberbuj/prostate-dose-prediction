@@ -121,4 +121,7 @@ def build_model(cfg) -> nn.Module:
             depth=cfg.model.depth,
             dropout=cfg.model.dropout,
         )
+    if arch == "unet3d":
+        from src.models.unet3d import build_model_3d
+        return build_model_3d(cfg)
     raise NotImplementedError(f"Arch {arch} no implementada todavía")

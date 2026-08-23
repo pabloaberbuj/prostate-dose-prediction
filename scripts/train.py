@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.datamodules.dose_datamodule import DoseDataModule
 from src.models.lightning_module import DosePredictionModule
-from src.callbacks.logging_callbacks import DVHLoggingCallback, SliceLoggingCallback
+from src.callbacks.logging_callbacks import DVHLoggingCallback, SliceLoggingCallback, EpochSummaryCallback
 
 
 def parse_args():
@@ -49,6 +49,18 @@ def main():
         cfg.data.processed_dir = args.processed_dir
 
     torch.set_float32_matmul_precision('high')
+    if torch.cuda.is_available():
+        # Techo duro de VRAM por proceso. En Windows/WDDM, un alloc que excede
+        # la VRAM fisica NO tira OutOfMemoryError limpio por defecto -- el
+        # driver empieza a paginar a RAM del sistema ("shared GPU memory") y
+        # puede colgar toda la PC durante minutos (incidente real durante el
+        # sondeo de memoria de exp_normo_3dunet). Con el cap, el allocator de
+        # PyTorch respeta el limite y tira OOM limpio en vez de pagear.
+        # Override opcional via env var (ej. datasets con pacientes de mas cortes
+        # que requieren mas margen) -- default sigue siendo 0.88 si no se setea.
+        import os as _os
+        _mem_fraction = float(_os.environ.get("PROSTATE_CUDA_MEM_FRACTION", "0.88"))
+        torch.cuda.set_per_process_memory_fraction(_mem_fraction, device=0)
     pl.seed_everything(cfg.experiment.seed, workers=True)
 
     # DataModule
@@ -118,6 +130,7 @@ def main():
             verbose=True,
         ),
         LearningRateMonitor(logging_interval="epoch"),
+        EpochSummaryCallback(every_n_epochs=getattr(cfg.logging, 'print_every_n_epochs', 1)),
         DVHLoggingCallback(
             every_n_epochs=cfg.logging.log_dvh_every_n_epochs,
             num_samples=cfg.logging.num_visual_samples,
@@ -151,6 +164,12 @@ def main():
         torch.load = _load_no_weights_only
 
     trainer.fit(model, datamodule=datamodule, ckpt_path=args.resume)
+
+    # Test con el mejor checkpoint (por val/mae) — deja test/* en el summary de W&B de
+    # este mismo run, comparable directamente en la tabla del proyecto. El análisis
+    # completo (OpenKBP scores, constraints, figuras) sigue haciéndose aparte con
+    # scripts/evaluate.py, que es más rico que este test_step simple.
+    trainer.test(model, datamodule=datamodule, ckpt_path="best")
 
 
 if __name__ == "__main__":

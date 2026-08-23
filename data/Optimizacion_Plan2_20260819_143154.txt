@@ -1,0 +1,116 @@
+=====================================================================
+REPORTE DE OPTIMIZACIÓN Y DISCRETIZACIÓN DE CURVAS (Eclipse 13.6)
+=====================================================================
+Fecha/Hora: 8/19/2026 2:31:54 PM
+ID del Plan: Plan2
+=====================================================================
+
+[PUNTO] Estructura: PTV_High | Tipo: Lower | Dosis: 7878.0 cGy | Vol: 100% | Prioridad: 100
+[PUNTO] Estructura: PTV_High | Tipo: Upper | Dosis: 8100.0 cGy | Vol: 0% | Prioridad: 120
+[LÍNEA] Estructura: Bladder | Prioridad: 53.344524 (Iniciando volcado de puntos)
+   -> Punto 001: Dosis = 34.95 cGy | Vol = 98.99%
+   -> Punto 002: Dosis = 94.27 cGy | Vol = 96.97%
+   -> Punto 003: Dosis = 107.88 cGy | Vol = 95.96%
+   -> Punto 004: Dosis = 220.57 cGy | Vol = 83.84%
+   -> Punto 005: Dosis = 348.87 cGy | Vol = 70.71%
+   -> Punto 006: Dosis = 464.10 cGy | Vol = 62.63%
+   -> Punto 007: Dosis = 480.21 cGy | Vol = 61.62%
+   -> Punto 008: Dosis = 584.16 cGy | Vol = 56.57%
+   -> Punto 009: Dosis = 606.89 cGy | Vol = 55.56%
+   -> Punto 010: Dosis = 720.31 cGy | Vol = 51.52%
+   -> Punto 011: Dosis = 840.75 cGy | Vol = 48.48%
+   -> Punto 012: Dosis = 903.20 cGy | Vol = 47.47%
+   -> Punto 013: Dosis = 971.35 cGy | Vol = 46.46%
+   -> Punto 014: Dosis = 1124.14 cGy | Vol = 44.44%
+   -> Punto 015: Dosis = 1439.91 cGy | Vol = 40.40%
+   -> Punto 016: Dosis = 1678.75 cGy | Vol = 37.37%
+   -> Punto 017: Dosis = 1852.54 cGy | Vol = 35.35%
+   -> Punto 018: Dosis = 1949.14 cGy | Vol = 34.34%
+   -> Punto 019: Dosis = 2054.84 cGy | Vol = 33.33%
+   -> Punto 020: Dosis = 2171.11 cGy | Vol = 32.32%
+   -> Punto 021: Dosis = 2426.83 cGy | Vol = 30.30%
+   -> Punto 022: Dosis = 2698.71 cGy | Vol = 28.28%
+   -> Punto 023: Dosis = 2982.33 cGy | Vol = 26.26%
+   -> Punto 024: Dosis = 3260.01 cGy | Vol = 24.24%
+   -> Punto 025: Dosis = 3521.02 cGy | Vol = 22.22%
+   -> Punto 026: Dosis = 3936.66 cGy | Vol = 19.19%
+   -> Punto 027: Dosis = 4206.99 cGy | Vol = 17.17%
+   -> Punto 028: Dosis = 4493.67 cGy | Vol = 15.15%
+   -> Punto 029: Dosis = 4650.03 cGy | Vol = 14.14%
+   -> Punto 030: Dosis = 4820.45 cGy | Vol = 13.13%
+   -> Punto 031: Dosis = 5022.69 cGy | Vol = 12.12%
+   -> Punto 032: Dosis = 5246.00 cGy | Vol = 11.11%
+   -> Punto 033: Dosis = 5491.10 cGy | Vol = 10.10%
+   -> Punto 034: Dosis = 5769.11 cGy | Vol = 9.09%
+   -> Punto 035: Dosis = 6107.72 cGy | Vol = 8.08%
+   -> Punto 036: Dosis = 6507.02 cGy | Vol = 7.07%
+   -> Punto 037: Dosis = 6930.59 cGy | Vol = 6.06%
+   -> Punto 038: Dosis = 7402.88 cGy | Vol = 5.05%
+   -> Punto 039: Dosis = 7734.19 cGy | Vol = 4.42%
+   -> Punto 040: Dosis = 8190.00 cGy | Vol = 4.42%
+   -> Punto 041: Dosis = 8190.00 cGy | Vol = 0.00%
+   -> Punto 042: Dosis = 8194.10 cGy | Vol = 0.00%
+
+[PUNTO] Estructura: Bladder | Tipo: Upper | Dosis: 6500.0 cGy | Vol: 50% | Prioridad: 0
+[PUNTO] Estructura: Bladder | Tipo: Upper | Dosis: 7000.0 cGy | Vol: 35% | Prioridad: 0
+[PUNTO] Estructura: Bladder | Tipo: Upper | Dosis: 7500.0 cGy | Vol: 25% | Prioridad: 0
+[PUNTO] Estructura: Bladder | Tipo: Upper | Dosis: 8000.0 cGy | Vol: 15% | Prioridad: 0
+[LÍNEA] Estructura: Rectum | Prioridad: 47.477333 (Iniciando volcado de puntos)
+   -> Punto 001: Dosis = 427.89 cGy | Vol = 98.99%
+   -> Punto 002: Dosis = 427.89 cGy | Vol = 98.99%
+   -> Punto 003: Dosis = 481.32 cGy | Vol = 97.98%
+   -> Punto 004: Dosis = 572.30 cGy | Vol = 95.96%
+   -> Punto 005: Dosis = 685.33 cGy | Vol = 92.93%
+   -> Punto 006: Dosis = 724.92 cGy | Vol = 91.92%
+   -> Punto 007: Dosis = 809.62 cGy | Vol = 89.90%
+   -> Punto 008: Dosis = 944.45 cGy | Vol = 86.87%
+   -> Punto 009: Dosis = 1047.25 cGy | Vol = 84.85%
+   -> Punto 010: Dosis = 1159.44 cGy | Vol = 82.83%
+   -> Punto 011: Dosis = 1219.18 cGy | Vol = 81.82%
+   -> Punto 012: Dosis = 1354.86 cGy | Vol = 79.80%
+   -> Punto 013: Dosis = 1430.14 cGy | Vol = 78.79%
+   -> Punto 014: Dosis = 1600.45 cGy | Vol = 76.77%
+   -> Punto 015: Dosis = 1777.43 cGy | Vol = 74.75%
+   -> Punto 016: Dosis = 1968.55 cGy | Vol = 72.73%
+   -> Punto 017: Dosis = 2173.70 cGy | Vol = 70.71%
+   -> Punto 018: Dosis = 2390.62 cGy | Vol = 68.69%
+   -> Punto 019: Dosis = 2621.61 cGy | Vol = 66.67%
+   -> Punto 020: Dosis = 2858.13 cGy | Vol = 64.65%
+   -> Punto 021: Dosis = 3203.56 cGy | Vol = 61.62%
+   -> Punto 022: Dosis = 3419.57 cGy | Vol = 59.60%
+   -> Punto 023: Dosis = 3522.28 cGy | Vol = 58.59%
+   -> Punto 024: Dosis = 3618.28 cGy | Vol = 57.58%
+   -> Punto 025: Dosis = 3800.50 cGy | Vol = 55.56%
+   -> Punto 026: Dosis = 3975.11 cGy | Vol = 53.54%
+   -> Punto 027: Dosis = 4060.40 cGy | Vol = 52.53%
+   -> Punto 028: Dosis = 4294.23 cGy | Vol = 49.49%
+   -> Punto 029: Dosis = 4445.60 cGy | Vol = 47.47%
+   -> Punto 030: Dosis = 4657.50 cGy | Vol = 44.44%
+   -> Punto 031: Dosis = 4790.52 cGy | Vol = 42.42%
+   -> Punto 032: Dosis = 4986.88 cGy | Vol = 39.39%
+   -> Punto 033: Dosis = 5180.90 cGy | Vol = 36.36%
+   -> Punto 034: Dosis = 5314.92 cGy | Vol = 34.34%
+   -> Punto 035: Dosis = 5455.11 cGy | Vol = 32.32%
+   -> Punto 036: Dosis = 5609.07 cGy | Vol = 30.30%
+   -> Punto 037: Dosis = 5778.92 cGy | Vol = 28.28%
+   -> Punto 038: Dosis = 5956.68 cGy | Vol = 26.26%
+   -> Punto 039: Dosis = 6144.11 cGy | Vol = 24.24%
+   -> Punto 040: Dosis = 6347.69 cGy | Vol = 22.22%
+   -> Punto 041: Dosis = 6557.22 cGy | Vol = 20.20%
+   -> Punto 042: Dosis = 6763.91 cGy | Vol = 18.18%
+   -> Punto 043: Dosis = 6978.32 cGy | Vol = 16.16%
+   -> Punto 044: Dosis = 7087.48 cGy | Vol = 15.15%
+   -> Punto 045: Dosis = 7289.63 cGy | Vol = 13.13%
+   -> Punto 046: Dosis = 7470.76 cGy | Vol = 11.11%
+   -> Punto 047: Dosis = 7555.03 cGy | Vol = 10.10%
+   -> Punto 048: Dosis = 7620.17 cGy | Vol = 9.84%
+   -> Punto 049: Dosis = 8190.00 cGy | Vol = 9.84%
+   -> Punto 050: Dosis = 8190.00 cGy | Vol = 0.00%
+   -> Punto 051: Dosis = 8194.10 cGy | Vol = 0.00%
+
+[PUNTO] Estructura: Rectum | Tipo: Upper | Dosis: 5000.0 cGy | Vol: 50% | Prioridad: 0
+[PUNTO] Estructura: Rectum | Tipo: Upper | Dosis: 6000.0 cGy | Vol: 35% | Prioridad: 0
+[PUNTO] Estructura: Rectum | Tipo: Upper | Dosis: 6500.0 cGy | Vol: 25% | Prioridad: 0
+[PUNTO] Estructura: Rectum | Tipo: Upper | Dosis: 7000.0 cGy | Vol: 20% | Prioridad: 0
+[PUNTO] Estructura: Rectum | Tipo: Upper | Dosis: 7500.0 cGy | Vol: 15% | Prioridad: 0
+[PUNTO] Estructura: z_Ring | Tipo: Upper | Dosis: 7800.0 cGy | Vol: 0% | Prioridad: 80

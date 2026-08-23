@@ -1,0 +1,24 @@
+{
+  "estado": "ok",
+  "patient_id": "PT_5cbfd244434f9b55",
+  "timestamp": "20260821_144611",
+  "carpeta": "C:\\Pablo\\Prueba Herramienta Tomo\\PT_5cbfd244434f9b55",
+  "features": {
+    "VolRectum_cc": 71.41875,
+    "VolBladder_cc": 352.18125,
+    "VolPTV_cc": 227.53125,
+    "Solap_PTV_Rectum_cc": 13.21875,
+    "Solap_PTV_Bladder_cc": 40.949999999999996,
+    "overlap_rel_recto": 0.18508794959306904,
+    "overlap_rel_vejiga": 0.1162753553745408
+  },
+  "recto": {
+    "zona": "rojo",
+    "V65_pred": 19.122554149679083,
+    "V55_pred": 29.525013741401956
+  },
+  "vejiga": {
+    "zona": "naranja",
+    "V65_pred": 15.627947314523098
+  }
+}

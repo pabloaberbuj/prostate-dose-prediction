@@ -1,0 +1,17 @@
+# Configuracion de la herramienta de tomografo.
+# Ver PROMPT_herramienta_tomografo_app.md para el detalle de cada parametro.
+
+# Carpeta a monitorear (donde el tomografo/PACS deja el CT+RS del autocontour).
+# Editar esta linea con la carpeta real -- mientras quede con el valor de ejemplo
+# de abajo, app.py NO inicia el monitoreo automatico (queda solo la apertura manual).
+# TEMPORAL: carpeta de pruebas en esta PC, mientras se define la carpeta final en el
+# tomografo del centro.
+watch_folder: "C:/Pablo/Prueba Herramienta Tomo"
+
+inactivity_timeout_sec: 10      # Capa 1: sin archivos nuevos por esto -> dispara chequeo
+rs_extra_timeout_sec: 60        # Capa 2: espera extra especifica si todavia no llego el RS
+file_stability_check_sec: 1     # segundos entre lectura y relectura de tamano de archivo
+poll_interval_sec: 2            # cada cuanto corre el loop propio de Capa 2
+
+host: "0.0.0.0"
+port: 5000

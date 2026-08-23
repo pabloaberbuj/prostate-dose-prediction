@@ -28,6 +28,19 @@ Capas de evaluación:
      sensibilidad>=0.90, PPV/NPV, estratificación por zona gris/clara, misses
      clínicamente significativos, matriz de confusión "algún constraint falla".
   Bootstrap (1000 resamples, seed fijo) para IC 95% de capa 1 y capa 3.
+
+Bloques adicionales de puntos DVH (bias/MAE, agregados en metrics_summary.json,
+puntos crudos en Gy/% ya en per_patient_metrics.csv — ver BLOQUE{1,2,3}_* arriba):
+  Bloque 1 — PTV: D95/D98/D99/D01cc (proxy de Dmax), bias/MAE en % de Rx (70 Gy).
+  Bloque 2 — OARs: Rectum Dmean/D30/D15/D10, Bladder Dmean, bias/MAE en % de Rx.
+  Bloque 3 — OARs: Rectum/Bladder V65/V55/V50/V45/V40Gy, bias/MAE en pp de volumen.
+
+Formato Lempart 2021 / Kajikawa 2019 (mismos puntos que evaluate.py, ver ahí el
+detalle — acá los valores nativos están en Gy y se convierten a % de Rx=70Gy
+antes de agregar, salvo los puntos V65Gy que ya son % de volumen):
+  lempart_format:  PTV D95/D98/D99/D2, Rectum Dmean/D30/D15/D10, Bladder Dmean,
+                   Body D0.1% — mean_pct_error/std_pct_error/mae_pct.
+  kajikawa_format: PTV D2/D98, Rectum/Bladder V65Gy — MAE ± 1SD.
 """
 
 import json
@@ -52,9 +65,10 @@ sys.path.insert(0, str(_REPO_ROOT / "data"))
 
 from src.datamodules.dose_datamodule import DoseDataModule  # noqa: E402
 from src.models.lightning_module import DosePredictionModule  # noqa: E402
-from compute_gt_dvh_hipo import volumen_pct_sobre_umbral, dosis_percentil  # noqa: E402
+from compute_gt_dvh_hipo import volumen_pct_sobre_umbral, dosis_percentil, dosis_d01cc  # noqa: E402
 
-from evaluate import cargar_modelo, figura_paciente, dose_score_openkbp  # noqa: E402
+from evaluate import (cargar_modelo, figura_paciente, dose_score_openkbp, cargar_vol_ptv_cc,  # noqa: E402
+                       bias_mae, diff_stats)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -95,20 +109,59 @@ DVH_POINTS_CAPA2 = [
 GT_COL_MAP = {
     "PTV_D95Gy":     "PTV_D95_Gy_gt256",
     "PTV_D98Gy":     "PTV_D98_Gy_gt256",
+    "PTV_D99Gy":     "PTV_D99_Gy_gt256",
+    "PTV_D2Gy":      "PTV_D2_Gy_gt256",
+    "PTV_D01cc":     "PTV_D01cc_Gy_gt256",
     "PTV_V70Gy":     "PTV_V70Gy_pct_gt256",
     "Rectum_V65Gy":  "Rectum_V65Gy_gt256",
     "Rectum_V55Gy":  "Rectum_V55Gy_gt256",
+    "Rectum_V50Gy":  "Rectum_V50Gy_gt256",
     "Rectum_V45Gy":  "Rectum_V45Gy_gt256",
+    "Rectum_V40Gy":  "Rectum_V40Gy_gt256",
     "Rectum_Dmean":  "Rectum_Dmean_gt256",
+    "Rectum_D30Gy":  "Rectum_D30Gy_gt256",
+    "Rectum_D15Gy":  "Rectum_D15Gy_gt256",
+    "Rectum_D10Gy":  "Rectum_D10Gy_gt256",
     "Bladder_V65Gy": "Bladder_V65Gy_gt256",
     "Bladder_V55Gy": "Bladder_V55Gy_gt256",
+    "Bladder_V50Gy": "Bladder_V50Gy_gt256",
     "Bladder_V45Gy": "Bladder_V45Gy_gt256",
+    "Bladder_V40Gy": "Bladder_V40Gy_gt256",
     "Bladder_Dmean": "Bladder_Dmean_gt256",
+    "Body_D0_1pctGy": "Body_D0_1pct_Gy_gt256",
 }
 
 # Puntos de solo-reporte (no entran en la lista formal de capa 2, pero se guardan
 # en el CSV per-patient y se agregan bias/MAE igual, es info "gratis" del GT)
-REPORT_ONLY_POINTS = ["Rectum_Dmean", "Bladder_Dmean"]
+REPORT_ONLY_POINTS = [
+    "Rectum_Dmean", "Bladder_Dmean",
+    "PTV_D99Gy", "PTV_D2Gy", "PTV_D01cc",
+    "Rectum_D30Gy", "Rectum_D15Gy", "Rectum_D10Gy",
+    "Rectum_V50Gy", "Rectum_V40Gy",
+    "Bladder_V50Gy", "Bladder_V40Gy",
+    "Body_D0_1pctGy",
+]
+
+# Los 3 bloques adicionales pedidos (bias/MAE, ver calcular_bloques_dvh_adicionales_hipo).
+# Bloque 1/2 se reportan en % de prescripción (70 Gy) aunque los puntos se
+# almacenan en Gy en el CSV; bloque 3 ya está en puntos porcentuales de volumen.
+BLOQUE1_PTV_DVH_GY     = ["PTV_D95Gy", "PTV_D98Gy", "PTV_D99Gy", "PTV_D01cc"]
+BLOQUE2_OAR_DVH_GY     = ["Rectum_Dmean", "Rectum_D30Gy", "Rectum_D15Gy", "Rectum_D10Gy",
+                          "Bladder_Dmean"]
+
+# Formato Lempart 2021 / Kajikawa 2019 — ver evaluate.py para la lista análoga en
+# normo. Acá los puntos base ya existen en Gy (GT_COL_MAP); se convierten a %Rx
+# (70Gy) al agregar, salvo V65Gy que ya es % de volumen.
+LEMPART_POINTS_GY_HIPO = {
+    "ptv":     ["PTV_D95Gy", "PTV_D98Gy", "PTV_D99Gy", "PTV_D2Gy"],
+    "rectum":  ["Rectum_Dmean", "Rectum_D30Gy", "Rectum_D15Gy", "Rectum_D10Gy"],
+    "bladder": ["Bladder_Dmean"],
+    "body":    ["Body_D0_1pctGy"],
+}
+KAJIKAWA_POINTS_HIPO_GY = ["PTV_D2Gy", "PTV_D98Gy"]           # convertir a %Rx
+KAJIKAWA_POINTS_HIPO_PCT = ["Rectum_V65Gy", "Bladder_V65Gy"]  # ya en % volumen
+BLOQUE3_OAR_VOLUMEN    = ["Rectum_V65Gy", "Rectum_V55Gy", "Rectum_V50Gy", "Rectum_V45Gy", "Rectum_V40Gy",
+                          "Bladder_V65Gy", "Bladder_V55Gy", "Bladder_V50Gy", "Bladder_V45Gy", "Bladder_V40Gy"]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -116,24 +169,114 @@ REPORT_ONLY_POINTS = ["Rectum_Dmean", "Bladder_Dmean"]
 # ──────────────────────────────────────────────────────────────────────────────
 
 def calcular_puntos_dvh_pred(dose_pred_gy: np.ndarray, ptv: np.ndarray,
-                              rectum: np.ndarray, bladder: np.ndarray) -> dict:
+                              rectum: np.ndarray, bladder: np.ndarray,
+                              vol_ptv_cc: float = None, body: np.ndarray = None) -> dict:
     out = {}
     out["PTV_D95Gy"] = dosis_percentil(dose_pred_gy, ptv, 95)
     out["PTV_D98Gy"] = dosis_percentil(dose_pred_gy, ptv, 98)
+    out["PTV_D99Gy"] = dosis_percentil(dose_pred_gy, ptv, 99)
+    out["PTV_D2Gy"] = dosis_percentil(dose_pred_gy, ptv, 2)
+    out["PTV_D01cc"] = dosis_d01cc(dose_pred_gy, ptv, vol_ptv_cc)
     out["PTV_V70Gy"] = volumen_pct_sobre_umbral(dose_pred_gy, ptv, 70.0)
     out["PTV_V95pct"] = volumen_pct_sobre_umbral(dose_pred_gy, ptv, 0.95 * PRESCRIPCION_GY)
     out["PTV_V98pct"] = volumen_pct_sobre_umbral(dose_pred_gy, ptv, 0.98 * PRESCRIPCION_GY)
     for nombre, mask in (("Rectum", rectum), ("Bladder", bladder)):
         out[f"{nombre}_V65Gy"] = volumen_pct_sobre_umbral(dose_pred_gy, mask, 65.0)
         out[f"{nombre}_V55Gy"] = volumen_pct_sobre_umbral(dose_pred_gy, mask, 55.0)
+        out[f"{nombre}_V50Gy"] = volumen_pct_sobre_umbral(dose_pred_gy, mask, 50.0)
         out[f"{nombre}_V45Gy"] = volumen_pct_sobre_umbral(dose_pred_gy, mask, 45.0)
+        out[f"{nombre}_V40Gy"] = volumen_pct_sobre_umbral(dose_pred_gy, mask, 40.0)
         vals = dose_pred_gy[mask > 0]
         out[f"{nombre}_Dmean"] = float(vals.mean()) if len(vals) else float("nan")
+    out["Rectum_D30Gy"] = dosis_percentil(dose_pred_gy, rectum, 30)
+    out["Rectum_D15Gy"] = dosis_percentil(dose_pred_gy, rectum, 15)
+    out["Rectum_D10Gy"] = dosis_percentil(dose_pred_gy, rectum, 10)
+    if body is not None:
+        out["Body_D0_1pctGy"] = dosis_percentil(dose_pred_gy, body, 0.1)
+    else:
+        out["Body_D0_1pctGy"] = float("nan")
     return out
 
 
 def mae_en_mascara(dose_pred_pct: np.ndarray, dose_real_pct: np.ndarray, mask: np.ndarray) -> float:
     return float((np.abs(dose_pred_pct - dose_real_pct) * mask).sum() / max(mask.sum(), 1))
+
+
+def bias_mae_pct_rx(df: pd.DataFrame, nombre: str, prescripcion_gy: float) -> dict:
+    """bias/MAE de un punto DVH almacenado en Gy (columnas {nombre}_real/_pred),
+    convertido a % de prescripción para reportar en las mismas unidades que el
+    resto del pipeline."""
+    real_gy = df[f"{nombre}_real"].to_numpy(dtype=float)
+    pred_gy = df[f"{nombre}_pred"].to_numpy(dtype=float)
+    valid = ~np.isnan(real_gy) & ~np.isnan(pred_gy)
+    if valid.sum() == 0:
+        return {"bias": float("nan"), "mae": float("nan"), "n": 0}
+    diff_pct = (pred_gy[valid] - real_gy[valid]) / prescripcion_gy * 100.0
+    return {"bias": float(np.mean(diff_pct)), "mae": float(np.mean(np.abs(diff_pct))), "n": int(valid.sum())}
+
+
+def diff_stats_pct_rx(df: pd.DataFrame, nombre: str, prescripcion_gy: float) -> dict:
+    """Igual que evaluate.diff_stats pero convirtiendo Gy -> % de prescripción
+    primero (los puntos base de este script están en Gy, no en %Rx)."""
+    real_gy = df[f"{nombre}_real"].to_numpy(dtype=float)
+    pred_gy = df[f"{nombre}_pred"].to_numpy(dtype=float)
+    valid = ~np.isnan(real_gy) & ~np.isnan(pred_gy)
+    n = int(valid.sum())
+    if n == 0:
+        return {"n": 0, "mean_signed": float("nan"), "std_signed": float("nan"),
+                "mae": float("nan"), "std_abs": float("nan")}
+    diff_pct = (pred_gy[valid] - real_gy[valid]) / prescripcion_gy * 100.0
+    abs_diff = np.abs(diff_pct)
+    return {
+        "n": n,
+        "mean_signed": float(np.mean(diff_pct)),
+        "std_signed":  float(np.std(diff_pct, ddof=1)) if n > 1 else float("nan"),
+        "mae":         float(np.mean(abs_diff)),
+        "std_abs":     float(np.std(abs_diff, ddof=1)) if n > 1 else float("nan"),
+    }
+
+
+def calcular_formato_lempart_kajikawa_hipo(df: pd.DataFrame, prescripcion_gy: float) -> dict:
+    """Igual criterio que evaluate.calcular_formato_lempart_kajikawa: los puntos
+    base están en Gy acá (no en %Rx como en evaluate.py), así que se convierten
+    antes de agregar. Las columnas {nombre}_real/_pred ya existen en el df
+    (evaluar_dataset ya las pobló vía GT_COL_MAP)."""
+    lempart = {}
+    for struct, nombres in LEMPART_POINTS_GY_HIPO.items():
+        for nombre in nombres:
+            s = diff_stats_pct_rx(df, nombre, prescripcion_gy)
+            lempart[f"{struct}_{nombre}"] = {
+                "mean_pct_error": s["mean_signed"],
+                "std_pct_error":  s["std_signed"],
+                "mae_pct":        s["mae"],
+                "n":              s["n"],
+            }
+
+    kajikawa = {}
+    for nombre in KAJIKAWA_POINTS_HIPO_GY:
+        s = diff_stats_pct_rx(df, nombre, prescripcion_gy)
+        kajikawa[nombre] = {"mae": s["mae"], "sd": s["std_abs"], "n": s["n"]}
+    for nombre in KAJIKAWA_POINTS_HIPO_PCT:
+        s = diff_stats(df, f"{nombre}_real", f"{nombre}_pred")
+        kajikawa[nombre] = {"mae": s["mae"], "sd": s["std_abs"], "n": s["n"]}
+
+    return {"lempart_format": lempart, "kajikawa_format": kajikawa}
+
+
+def agregar_columnas_lempart_kajikawa_hipo(df: pd.DataFrame, prescripcion_gy: float) -> pd.DataFrame:
+    """Columnas lf_/kf_ per-patient — error con signo pred-real, ya convertido a
+    % de prescripción para los puntos de dosis (los puntos V65Gy quedan en pp
+    de volumen, sin conversión)."""
+    for struct, nombres in LEMPART_POINTS_GY_HIPO.items():
+        for nombre in nombres:
+            df[f"lf_{struct}_{nombre}"] = (
+                (df[f"{nombre}_pred"] - df[f"{nombre}_real"]) / prescripcion_gy * 100.0
+            )
+    for nombre in KAJIKAWA_POINTS_HIPO_GY:
+        df[f"kf_{nombre}"] = (df[f"{nombre}_pred"] - df[f"{nombre}_real"]) / prescripcion_gy * 100.0
+    for nombre in KAJIKAWA_POINTS_HIPO_PCT:
+        df[f"kf_{nombre}"] = df[f"{nombre}_pred"] - df[f"{nombre}_real"]
+    return df
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -373,7 +516,8 @@ def casos_arc_limited(df: pd.DataFrame, umbral_mae_body: float = MAE_BODY_ARC_LI
 # Inferencia + métricas escalares por paciente (compartido entre val y test)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def evaluar_dataset(model, device, loader, gt_dvh: pd.DataFrame, desc: str) -> pd.DataFrame:
+def evaluar_dataset(model, device, loader, gt_dvh: pd.DataFrame, desc: str,
+                     processed_dir) -> pd.DataFrame:
     """Corre inferencia sobre un dataloader (val o test) y devuelve un DataFrame
     con una fila por paciente: MAE por estructura, dose score, puntos DVH
     predichos/reales, y flags de los constraints operativos. No retiene los
@@ -396,8 +540,10 @@ def evaluar_dataset(model, device, loader, gt_dvh: pd.DataFrame, desc: str) -> p
         rectum  = batch["rectum_mask"][0].numpy()
         bladder = batch["bladder_mask"][0].numpy()
 
+        vol_ptv_cc = cargar_vol_ptv_cc(processed_dir, anonid)
         dose_pred_gy = dose_pred_pct * PRESCRIPCION_GY / 100.0
-        pred_pts = calcular_puntos_dvh_pred(dose_pred_gy, ptv, rectum, bladder)
+        pred_pts = calcular_puntos_dvh_pred(dose_pred_gy, ptv, rectum, bladder,
+                                             vol_ptv_cc=vol_ptv_cc, body=body)
         gt_row = gt_dvh.loc[anonid]
 
         fila = {
@@ -411,9 +557,7 @@ def evaluar_dataset(model, device, loader, gt_dvh: pd.DataFrame, desc: str) -> p
         }
         for nombre, gt_col in GT_COL_MAP.items():
             fila[f"{nombre}_real"] = float(gt_row[gt_col])
-        for nombre in ["PTV_D95Gy", "PTV_D98Gy", "PTV_V70Gy", "PTV_V95pct", "PTV_V98pct",
-                       "Rectum_V65Gy", "Rectum_V55Gy", "Rectum_V45Gy", "Rectum_Dmean",
-                       "Bladder_V65Gy", "Bladder_V55Gy", "Bladder_V45Gy", "Bladder_Dmean"]:
+        for nombre in GT_COL_MAP:
             fila[f"{nombre}_pred"] = pred_pts[nombre]
 
         # Flags (umbral clínico, 1 = cumple) — real ya viene del CSV GT
@@ -532,20 +676,32 @@ def run_hipo_evaluation(args):
     # ── Val: solo para calibrar (congelar) el umbral operativo de capa 3 — evita
     # calibrar y evaluar sobre el mismo test set (circularidad).
     print(f"\nInfiriendo {len(anonids_val)} pacientes de val (calibración umbral, hipofraccionado)...")
-    df_val = evaluar_dataset(model, device, val_loader, gt_dvh, desc="Val hipo (calibracion)")
+    df_val = evaluar_dataset(model, device, val_loader, gt_dvh, desc="Val hipo (calibracion)",
+                              processed_dir=args.processed_dir_hipo)
 
     print(f"\nEvaluando {len(anonids_test)} pacientes de test (hipofraccionado)...")
-    df = evaluar_dataset(model, device, test_loader, gt_dvh, desc="Test hipo")
+    df = evaluar_dataset(model, device, test_loader, gt_dvh, desc="Test hipo",
+                          processed_dir=args.processed_dir_hipo)
 
     # NArcos por paciente (join con metricas_planes_hipofx_D95norm.csv) — para el
     # desglose por geometria de arcos (sección adicional, no afecta el agregado).
-    narcos_map = cargar_narcos(Path(args.metricas_csv_hipo))
-    df["NArcos"] = df["AnonID"].map(narcos_map)
-    faltantes_narcos = df[df["NArcos"].isna()]["AnonID"].tolist()
-    if faltantes_narcos:
-        log.warning(f"{len(faltantes_narcos)} pacientes de test sin NArcos en "
-                    f"{args.metricas_csv_hipo}: {faltantes_narcos}")
+    # ⚠️ La carpeta "dicoms hipofx" (fuente de este CSV) ya no existe en disco
+    # (limpieza de espacio, 2026-08 — ver CLAUDE_CODE_CONTEXT.md). Tolerar su
+    # ausencia: el desglose por NArcos y casos_arc_limited quedan vacios/omitidos,
+    # pero las capas 1/2/3 (lo que SI se puede calcular sin ese CSV) no se pierden.
+    if Path(args.metricas_csv_hipo).exists():
+        narcos_map = cargar_narcos(Path(args.metricas_csv_hipo))
+        df["NArcos"] = df["AnonID"].map(narcos_map)
+        faltantes_narcos = df[df["NArcos"].isna()]["AnonID"].tolist()
+        if faltantes_narcos:
+            log.warning(f"{len(faltantes_narcos)} pacientes de test sin NArcos en "
+                        f"{args.metricas_csv_hipo}: {faltantes_narcos}")
+    else:
+        log.warning(f"{args.metricas_csv_hipo} no existe (dato perdido, ver CLAUDE_CODE_CONTEXT.md) "
+                     f"— se omite el desglose por NArcos y casos_arc_limited.")
+        df["NArcos"] = float("nan")
 
+    df = agregar_columnas_lempart_kajikawa_hipo(df, PRESCRIPCION_GY)
     df.to_csv(output_dir / "per_patient_metrics.csv", index=False)
     print(f"Métricas por paciente guardadas en {output_dir / 'per_patient_metrics.csv'}")
 
@@ -585,6 +741,16 @@ def run_hipo_evaluation(args):
         real = df[f"{nombre}_real"].to_numpy()
         pred = df[f"{nombre}_pred"].to_numpy()
         puntos_reporte_adicionales[nombre] = {"bias": float(np.mean(pred - real)), "mae": float(np.mean(np.abs(pred - real)))}
+
+    # ── Bloques 1/2/3 pedidos: mismos puntos de arriba (algunos ya en capa2,
+    # otros solo-reporte), pero bias/MAE convertido a % de prescripción (70 Gy)
+    # para bloques 1 y 2 — bloque 3 ya está en puntos porcentuales de volumen.
+    bloque1_ptv = {nombre: bias_mae_pct_rx(df, nombre, PRESCRIPCION_GY) for nombre in BLOQUE1_PTV_DVH_GY}
+    bloque2_oar = {nombre: bias_mae_pct_rx(df, nombre, PRESCRIPCION_GY) for nombre in BLOQUE2_OAR_DVH_GY}
+    bloque3_oar = {nombre: bias_mae(df, f"{nombre}_real", f"{nombre}_pred") for nombre in BLOQUE3_OAR_VOLUMEN}
+
+    # ── Formato Lempart 2021 / Kajikawa 2019
+    formato_lk = calcular_formato_lempart_kajikawa_hipo(df, PRESCRIPCION_GY)
 
     # ── Plots — capa 2 y capa 3 (no requieren volúmenes, solo el dataframe)
     scatter_dvh_points(df, plots_dir / "dvh_points_scatter.png")
@@ -652,6 +818,11 @@ def run_hipo_evaluation(args):
         },
         "capa2_puntos_dvh": capa2,
         "capa2_puntos_reporte_adicionales": puntos_reporte_adicionales,
+        "bloque1_ptv_puntos_dvh_pct_rx": bloque1_ptv,
+        "bloque2_oar_puntos_dvh_pct_rx": bloque2_oar,
+        "bloque3_oar_puntos_v_pp_volumen": bloque3_oar,
+        "lempart_format": formato_lk["lempart_format"],
+        "kajikawa_format": formato_lk["kajikawa_format"],
         "capa3_constraints_operativos": {
             tag: {k: v for k, v in r.items() if not k.startswith("_")}
             for tag, r in resultados_capa3.items()
@@ -678,6 +849,27 @@ def run_hipo_evaluation(args):
           f"± {summary['capa1_regresion_dosis']['mae_rectum']['std']:.3f} %")
     print(f"MAE Bladder: {summary['capa1_regresion_dosis']['mae_bladder']['mean']:.3f} "
           f"± {summary['capa1_regresion_dosis']['mae_bladder']['std']:.3f} %")
+
+    print("\n=== Bloque 1 — PTV, puntos DVH (bias / MAE, % Rx) ===")
+    for k, v in bloque1_ptv.items():
+        print(f"  {k}: bias={v['bias']:+.3f}  MAE={v['mae']:.3f}  (n={v['n']})")
+
+    print("\n=== Bloque 2 — OARs, puntos DVH (bias / MAE, % Rx) ===")
+    for k, v in bloque2_oar.items():
+        print(f"  {k}: bias={v['bias']:+.3f}  MAE={v['mae']:.3f}  (n={v['n']})")
+
+    print("\n=== Bloque 3 — OARs, puntos V (bias / MAE, pp de volumen) ===")
+    for k, v in bloque3_oar.items():
+        print(f"  {k}: bias={v['bias']:+.3f}  MAE={v['mae']:.3f}  (n={v['n']})")
+
+    print("\n=== Formato Lempart 2021 (mean_pct_error ± std_pct_error, mae_pct) ===")
+    for k, v in formato_lk["lempart_format"].items():
+        print(f"  {k}: {v['mean_pct_error']:+.3f} ± {v['std_pct_error']:.3f}  "
+              f"MAE={v['mae_pct']:.3f}  (n={v['n']})")
+
+    print("\n=== Formato Kajikawa 2019 (MAE ± 1SD) ===")
+    for k, v in formato_lk["kajikawa_format"].items():
+        print(f"  {k}: {v['mae']:.3f} ± {v['sd']:.3f}  (n={v['n']})")
 
     print("\n=== CAPA 3 — constraints operativos (umbral calibrado en VAL, congelado) ===")
     for tag, r in resultados_capa3.items():

@@ -1,0 +1,164 @@
+# ============================================================
+# Experimento hipo 003 — DVH loss diferenciable (Nguyen et al. 2020, sin adversarial)
+# ============================================================
+# Copia EXACTA de exp_hipo_002b_finetune_clean.yaml (el modelo de referencia de la
+# serie hipo) — CAMBIA SOLO el bloque `loss`. Init, LR, split, horizonte y early
+# stopping IDENTICOS a 002b para que la comparacion 002b vs 003 aisle el efecto de
+# la loss (ver CLAUDE_CODE_CONTEXT.md, logs/exp_hipo_002b_finetune_clean.log para
+# confirmar init-weights/splits realmente usados por 002b, no asumidos).
+#
+#   - Init: TODOS los pesos de checkpoints/exp002_unet2d_psdm/epoch=191.ckpt
+#     (via --init-weights) — igual que 002b.
+#   - LR = 1e-5, mismo optimizer/scheduler/horizonte (100 epochs) que 002b.
+#   - Objetivo: atacar el corrimiento direccional del hombro del DVH de OAR
+#     (banda media 40-80%Rx) medido en results/dvh_curva_completa/summary_signed.json
+#     — L_total = L_MAE + lambda_dvh * L_DVH, L_DVH solo sobre PTV/Rectum/Bladder.
+#
+# Ver RESUMEN_prior_terma_arcos.md (seccion "DVH loss diferenciable") para el
+# detalle tecnico completo de la loss, y scripts/calibrar_dvh_loss.py para la
+# calibracion de dvh_sigmoid_k (chequeo de sesgo vs. DVH exacto) y dvh_weight
+# (lambda_0 = mean(L_MAE)/mean(L_DVH) a lambda=1, medido con el modelo al init
+# sobre ~5 batches de train) — NO copiar el lambda del paper original.
+# ============================================================
+
+experiment:
+  name: exp_hipo_003_dvhloss
+  description: "DVH loss diferenciable (Nguyen 2020, sigmoide, sin adversarial) sobre el baseline de referencia (002b) — ataca el sesgo direccional de hombro en banda media de OAR"
+  seed: 42
+
+# ----------------------- Datos -----------------------
+data:
+  processed_dir: "C:/Pablo/ProstateDoseProject/processed_hipo"
+  splits_file: "data/splits/splits_hipo_v2_clean.json"
+  fold: 0
+
+  inputs:
+    use_ct: true
+    use_body_mask: true
+    use_ptv_mask: false           # reemplazado por PSDM
+    use_bladder_mask: false       # reemplazado por PSDM
+    use_rectum_mask: false        # reemplazado por PSDM
+    use_psdm: true                # CT + BODY + PSDM_PTV + PSDM_Rectum + PSDM_Bladder
+    use_psdm_normalize_cm: 15.0
+
+  z_margin_slices: 5
+  inplane_size: 256
+
+  batch_size: 1
+  num_workers: 0
+  pin_memory: false
+
+  cache_train: false
+  cache_val: false
+
+# --------------------- Augmentation ---------------------
+augmentation:
+  flip_lr_prob: 0.5
+  rotation_degrees: 0
+  intensity_jitter_hu: 50
+
+# ----------------------- Modelo -----------------------
+model:
+  arch: "unet2d"
+  in_channels: 5             # CT + BODY + PSDM_PTV + PSDM_Rectum + PSDM_Bladder
+  out_channels: 1
+  base_features: 16
+  depth: 4
+  upsample_mode: "bilinear"
+  dropout: 0.0
+  context_slices: 3
+
+# ----------------------- Loss -----------------------
+# UNICO bloque que cambia respecto a exp_hipo_002b_finetune_clean.yaml.
+loss:
+  mae_weight: 1.0
+  use_moment_loss: false
+  moment_weight: 0.01
+  moment_structures:
+    ptv: [1, 2, 10]
+    bladder: [1, 2, 10]
+    rectum: [1, 2, 10]
+
+  # --- DVH diferenciable (Nguyen et al. 2020, sigmoide, SIN adversarial) ---
+  use_dvh_loss: true
+  # dvh_weight = lambda_0, calibrado con scripts/calibrar_dvh_loss.py (2026-08-13):
+  # midiendo L_MAE y L_DVH (a lambda=1) sobre 5 batches de train con el modelo AL
+  # INIT (pesos de exp002 normo, los mismos que --init-weights carga al arrancar
+  # el entrenamiento real):
+  #   L_MAE_mean=1.9869  L_DVH_mean=0.039005  ->  lambda_0 = 1.9869/0.039005 = 50.94
+  # Ver resultados completos (5 batches, ambos terminos crudos por batch) en
+  # results/calibracion_dvh_loss.json. NO es el lambda del paper (Nguyen 2020 no
+  # publica un lambda directamente comparable — arquitectura/escala de dosis
+  # distintas) — se fijo por balance de magnitud en ESTE dataset/modelo.
+  dvh_weight: 50.94
+  # dvh_sigmoid_k: pendiente_s = dvh_sigmoid_k / d_step_pct (por estructura).
+  # Default 2*ln(9)=4.394 -> ancho de transicion del sigmoide (10%-90%) = 1 bin
+  # de paso. CHEQUEO DE SESGO (scripts/calibrar_dvh_loss.py, 2026-08-13, n=10
+  # pacientes de train, V_approx sigmoide vs V_exact del GT): sesgo medio
+  # ptv=0.304pp (max por-bin 3.54pp, cerca de D=100% donde la dosis de PTV esta
+  # muy concentrada), rectum=0.033pp, bladder=0.016pp — los 3 << 0.5pp de
+  # tolerancia, k=4.394 se deja sin ajustar. Ver results/calibracion_dvh_loss.json.
+  dvh_sigmoid_k: 4.394
+  # Muestreo de D (%Rx), concentrado en el hombro, no en el plateau bajo.
+  dvh_structures:
+    ptv:
+      d_min_pct: 90.0
+      d_max_pct: 107.0
+      d_step_pct: 1.0
+    rectum:
+      d_min_pct: 40.0
+      d_max_pct: 95.0
+      d_step_pct: 2.5
+    bladder:
+      d_min_pct: 40.0
+      d_max_pct: 95.0
+      d_step_pct: 2.5
+
+# --------------------- Optimizer ---------------------
+optimizer:
+  name: "adamw"
+  lr: 1.0e-5           # identico a 002b — full finetune sin destruir el prior de PTV
+  weight_decay: 1.0e-5
+
+scheduler:
+  name: "cosine"
+  warmup_epochs: 5   # nota: no esta conectado en configure_optimizers() (dead config, ver lightning_module.py)
+  max_epochs: 100     # identico a 002b
+
+# --------------------- Training ---------------------
+training:
+  max_epochs: 100
+  precision: "16-mixed"
+  accumulate_grad_batches: 1
+  gradient_clip_val: 1.0
+  early_stopping_patience: 30   # identico a 002b
+  monitor_metric: "val/mae"
+  monitor_mode: "min"
+
+# --------------------- Logging ---------------------
+logging:
+  wandb_project: "prostate-dose-prediction"
+  wandb_entity: null
+  log_dvh_every_n_epochs: 5
+  log_visual_every_n_epochs: 10
+  num_visual_samples: 3
+
+# --------------------- Constraints clínicos (hipofraccionado) ---------------------
+# Identico a 002b — ver ese config para el racional completo.
+constraints:
+  prescription_dose_gy: 70.0
+  num_fractions: 28
+  ptv:
+    d95_target_pct: 100.0
+  rectum:
+    v70_max_pct: null
+    v65_max_pct: 15.0
+    v55_max_pct: 25.0
+    v45_max_pct: 45.0
+    dmean_max_gy: 40.0   # solo registro
+  bladder:
+    v70_max_pct: null
+    v65_max_pct: 15.0
+    v55_max_pct: 25.0
+    v45_max_pct: 45.0
+    dmean_max_gy: 40.0   # solo registro

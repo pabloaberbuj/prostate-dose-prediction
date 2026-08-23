@@ -1,0 +1,144 @@
+# ============================================================
+# Experimento hipo 003 (aligned-split) — fine-tuning desde exp002 (normo),
+# split ALINEADO al del ML clasico (Proyecto 1) para comparacion homologada
+# ============================================================
+# Copia EXACTA de exp_hipo_003_finetune_v3.yaml. UNICO cambio real: splits_file
+# apunta a data/splits/splits_hipo_v3.json (Proyecto 1, ML clasico) en vez de
+# splits_hipo_v3_unet.json.
+#
+# Motivo: PROMPT_comparacion_unet_vs_clasico.md exige que la U-Net y el clasico
+# se evaluen sobre EXACTAMENTE el mismo test set (33 AnonID). Se detecto que la
+# corrida anterior (exp_hipo_003_finetune_v3, split v3_unet) usaba un split
+# DISTINTO — 19 de los 33 pacientes de test del clasico estaban en el TRAIN de
+# esa corrida (leakage real, no solo split distinto), y otros 7 en su val. Solo
+# 7/33 eran limpios. Pablo confirmo re-entrenar (no solo re-inferir) con el
+# split correcto antes de armar la comparacion.
+#
+# splits_hipo_v3.json (Proyecto 1): train=141 (incluye los 30 UnApproved —
+# "unapproved_a_train":true), val=26 (poblacion natural), test=33 (poblacion
+# natural, sin UnApproved) — verificado antes de entrenar: los 200 AnonID
+# tienen NPZ valido en processed_hipo/ con mascaras Rectum/Bladder no vacias
+# (PT_f4bd8360f920284c, el excluido de splits_hipo_v3_unet.json por mascaras
+# vacias, NO esta en este split — no genera conflicto).
+#
+#   - Init: TODOS los pesos de checkpoints/exp002_unet2d_psdm/epoch=191.ckpt.
+#   - LR = 1e-5. Full finetune, sin freezing.
+#   - Horizonte escalado con la misma metodologia que exp_hipo_003_finetune_v3:
+#     factor = 265 (train normo) / n_train_nuevo (141) = 1.8794. Aplicado sobre
+#     la base de 002/002b (max_epochs=100, patience=30):
+#       max_epochs = round(100 * 1.8794) = 188
+#       patience   = round(30  * 1.8794) = 56
+#
+# Ver PROMPT_comparacion_unet_vs_clasico.md / CLAUDE_CODE_CONTEXT_070826.md.
+# ============================================================
+
+experiment:
+  name: exp_hipo_003_finetune_v3_alignedsplit
+  description: "Fine-tuning hipofraccionado, split alineado a splits_hipo_v3.json (Proyecto 1 ML clasico) para comparacion homologada: full finetune desde exp002, LR=1e-5, horizonte escalado x1.8794 (188 epochs)"
+  seed: 42
+
+# ----------------------- Datos -----------------------
+data:
+  processed_dir: "C:/Pablo/ProstateDoseProject/processed_hipo"
+  splits_file: "data/splits/splits_hipo_v3.json"
+  fold: 0
+
+  inputs:
+    use_ct: true
+    use_body_mask: true
+    use_ptv_mask: false           # reemplazado por PSDM
+    use_bladder_mask: false       # reemplazado por PSDM
+    use_rectum_mask: false        # reemplazado por PSDM
+    use_psdm: true                # CT + BODY + PSDM_PTV + PSDM_Rectum + PSDM_Bladder
+    use_psdm_normalize_cm: 15.0
+
+  z_margin_slices: 5
+  inplane_size: 256
+
+  batch_size: 1
+  num_workers: 0
+  pin_memory: false
+
+  cache_train: false
+  cache_val: false
+
+# --------------------- Augmentation ---------------------
+augmentation:
+  flip_lr_prob: 0.5
+  rotation_degrees: 0
+  intensity_jitter_hu: 50
+
+# ----------------------- Modelo -----------------------
+model:
+  arch: "unet2d"
+  in_channels: 5             # CT + BODY + PSDM_PTV + PSDM_Rectum + PSDM_Bladder
+  out_channels: 1
+  base_features: 16
+  depth: 4
+  upsample_mode: "bilinear"
+  dropout: 0.0
+  context_slices: 3
+
+# ----------------------- Loss -----------------------
+loss:
+  mae_weight: 1.0
+  use_moment_loss: false
+  moment_weight: 0.01
+  moment_structures:
+    ptv: [1, 2, 10]
+    bladder: [1, 2, 10]
+    rectum: [1, 2, 10]
+
+# --------------------- Optimizer ---------------------
+optimizer:
+  name: "adamw"
+  lr: 1.0e-5
+  weight_decay: 1.0e-5
+
+scheduler:
+  name: "cosine"
+  warmup_epochs: 5   # nota: no está conectado en configure_optimizers() (dead config, ver lightning_module.py)
+  max_epochs: 188     # horizonte REAL de este run — self-consistente. factor=265/141=1.8794 (ver cabecera).
+
+# --------------------- Training ---------------------
+training:
+  max_epochs: 188
+  precision: "16-mixed"
+  accumulate_grad_batches: 1
+  gradient_clip_val: 1.0
+  early_stopping_patience: 56   # escalado desde 30 por el mismo factor 1.8794
+  monitor_metric: "val/mae"
+  monitor_mode: "min"
+
+# --------------------- Logging ---------------------
+logging:
+  wandb_project: "prostate-dose-prediction"
+  wandb_entity: null
+  log_dvh_every_n_epochs: 5
+  log_visual_every_n_epochs: 10
+  num_visual_samples: 3
+  tags:
+    - "dataset:hipo_v3_alignedsplit"
+    - "arch:unet2d"
+    - "inputs:psdm"
+    - "init:normo_exp002"
+    - "purpose:comparacion_clasico"
+
+# --------------------- Constraints clínicos (hipofraccionado) ---------------------
+constraints:
+  prescription_dose_gy: 70.0
+  num_fractions: 28
+  ptv:
+    d95_target_pct: 100.0
+  rectum:
+    v70_max_pct: null
+    v65_max_pct: 15.0
+    v55_max_pct: 25.0
+    v45_max_pct: 45.0
+    dmean_max_gy: 40.0   # solo registro
+  bladder:
+    v70_max_pct: null
+    v65_max_pct: 15.0
+    v55_max_pct: 25.0
+    v45_max_pct: 45.0
+    dmean_max_gy: 40.0   # solo registro

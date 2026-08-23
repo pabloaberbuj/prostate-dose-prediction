@@ -1,0 +1,72 @@
+{
+  "version_features": "p1_v1_7geometricas",
+  "feature_cols_orden": [
+    "VolRectum_cc",
+    "VolBladder_cc",
+    "VolPTV_cc",
+    "Solap_PTV_Rectum_cc",
+    "Solap_PTV_Bladder_cc",
+    "overlap_rel_recto",
+    "overlap_rel_vejiga"
+  ],
+  "constraints": [
+    "RV65",
+    "RV55",
+    "BV65"
+  ],
+  "modelo_desplegado_clasificacion": "logreg (StandardScaler + LogisticRegression, class_weight=balanced)",
+  "modelo_control_clasificacion": "HistGradientBoostingClassifier (no se despliega, solo referencia)",
+  "modelo_regresion_severidad": {
+    "RV65": "ridge",
+    "RV55": "ridge",
+    "BV65": "ridge"
+  },
+  "archivos": {
+    "RV65": {
+      "clasificacion": "clf_RV65.joblib",
+      "regresion": "reg_RV65.joblib",
+      "modelo_regresion": "ridge"
+    },
+    "RV55": {
+      "clasificacion": "clf_RV55.joblib",
+      "regresion": "reg_RV55.joblib",
+      "modelo_regresion": "ridge"
+    },
+    "BV65": {
+      "clasificacion": "clf_BV65.joblib",
+      "regresion": "reg_BV65.joblib",
+      "modelo_regresion": "ridge"
+    }
+  },
+  "thresholds_file": "thresholds.json",
+  "dataset_csv": "dataset_p1.csv",
+  "splits_file": "splits_hipo_v3.json",
+  "splits_metadata": {
+    "fuente": "C:\\Pablo\\ProstateDoseProject\\repo\\data\\metricas_planes_hipofx_D95norm.csv",
+    "estratificacion": "2D_compliance_operativo_D95norm (recto_op_fail=RV65_fail OR RV55_fail; vejiga_op_fail=BV65_fail), solo sobre poblacion natural",
+    "celdas_2d_natural": {
+      "solo_vejiga": 18,
+      "ambos_fallan": 26,
+      "solo_recto": 35,
+      "ambos_cumplen": 91
+    },
+    "fracciones_natural": {
+      "train": 0.65,
+      "val": 0.15,
+      "test": 0.2
+    },
+    "unapproved_a_train": true,
+    "n_unapproved": 30,
+    "random_state": 42,
+    "n_total": 200,
+    "n_train": 141,
+    "n_val": 26,
+    "n_test": 33,
+    "particiones_sin_eventos": []
+  },
+  "fecha_generacion": "2026-08-20",
+  "notas": [
+    "tiene_VVSS: feature pendiente (TODO), no incluida en esta version — no hay columna en el CSV fuente que la indique todavia.",
+    "Tarea 7 (extractor en vivo) requiere que Pablo complete configs/config_p1.yaml con los nombres exactos de estructura del autocontour; el test de consistencia esta bloqueado ademas por falta de DICOMs crudos en disco (ver notas en config_p1.yaml)."
+  ]
+}

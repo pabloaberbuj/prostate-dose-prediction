@@ -36,38 +36,76 @@ from src.datamodules.dose_datamodule import DoseDataModule
 from src.models.lightning_module import DosePredictionModule
 
 
+# Prescripción del dataset normofraccionado (única que usa este script — el
+# hipofraccionado vive en evaluate_hipo.py con su propia prescripción de 70 Gy).
+PRESCRIPCION_GY_NORMO = 78.0
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Volumen nativo por paciente (para calibrar D0.1cc sobre la máscara downsampleada)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def cargar_vol_ptv_cc(processed_dir, anonid: str) -> float:
+    """Lee meta['vol_ptv_cc'] (volumen NATIVO del PTV, calculado en preprocess*.py
+    antes de downsamplear a 256x256) directamente del NPZ, sin cargar los arrays."""
+    npz_path = Path(processed_dir) / f"{anonid}.npz"
+    data = np.load(str(npz_path), allow_pickle=True, mmap_mode="r")
+    try:
+        meta = json.loads(str(data["meta"][0]))
+    finally:
+        data.close()
+    return float(meta.get("vol_ptv_cc", float("nan")))
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Cálculo de métricas DVH
 # ──────────────────────────────────────────────────────────────────────────────
 
-def dvh_metrics(dose: np.ndarray, mask: np.ndarray) -> dict:
+_DVH_METRICS_KEYS = [
+    "D95", "D98", "D99", "D2", "Dmax", "Dmean", "D01cc", "D0_1pct",
+    "D30", "D15", "D10",
+    "V40", "V45", "V50", "V55", "V60", "V65", "V70", "V75", "V78", "V95", "V100",
+]
+
+
+def dvh_metrics(dose: np.ndarray, mask: np.ndarray, vol_struct_cc: float = None) -> dict:
     """Calcula métricas estándar de DVH sobre la región de la máscara.
 
     Args:
         dose: array (Z, H, W) en % de prescripción.
         mask: array (Z, H, W) binario.
+        vol_struct_cc: volumen NATIVO (pre-downsample) de la estructura en cc,
+            usado solo para calibrar D01cc (dosis a 0.1cc) sobre la máscara
+            downsampleada — ver cargar_vol_ptv_cc(). Si es None, D01cc = NaN.
 
     Returns:
-        dict con D95, D98, D99, D2, Dmax, Dmean, V70, V65, V60, V50, V75, V78, V95, V100.
+        dict con D95, D98, D99, D2, D0_1pct, Dmax, Dmean, D01cc, D30, D15, D10,
+        V40, V45, V50, V55, V60, V65, V70, V75, V78, V95, V100.
     """
     roi = dose[mask > 0]
     if len(roi) == 0:
-        return {k: float("nan") for k in [
-            "D95", "D98", "D99", "D2", "Dmax", "Dmean",
-            "V50", "V60", "V65", "V70", "V75", "V78", "V95", "V100",
-        ]}
+        return {k: float("nan") for k in _DVH_METRICS_KEYS}
 
-    return {
+    rx = PRESCRIPCION_GY_NORMO
+    out = {
         # Dx (dosis que recibe el x% del volumen)
         "D95":  float(np.percentile(roi, 5)),
         "D98":  float(np.percentile(roi, 2)),
         "D99":  float(np.percentile(roi, 1)),
         "D2":   float(np.percentile(roi, 98)),
+        "D0_1pct": float(np.percentile(roi, 99.9)),  # D0.1% (near-max, formato Lempart/Kajikawa)
         "Dmax": float(roi.max()),
         "Dmean": float(roi.mean()),
+        # Dx% de baja dosis (banda usada para Rectum D30/D15/D10)
+        "D30":  float(np.percentile(roi, 70)),
+        "D15":  float(np.percentile(roi, 85)),
+        "D10":  float(np.percentile(roi, 90)),
         # Vx (% volumen que recibe >= x% prescripción)
         # 70 Gy = 89.7% de la prescripción de 78 Gy
+        "V40":  float(100.0 * (roi >= 40.0 / rx * 100.0).sum() / len(roi)),  # 40 Gy
+        "V45":  float(100.0 * (roi >= 45.0 / rx * 100.0).sum() / len(roi)),  # 45 Gy
         "V50":  float(100.0 * (roi >= 64.1).sum() / len(roi)),  # 50 Gy
+        "V55":  float(100.0 * (roi >= 55.0 / rx * 100.0).sum() / len(roi)),  # 55 Gy
         "V60":  float(100.0 * (roi >= 76.9).sum() / len(roi)),  # 60 Gy
         "V65":  float(100.0 * (roi >= 83.3).sum() / len(roi)),  # 65 Gy
         "V70":  float(100.0 * (roi >= 89.7).sum() / len(roi)),  # 70 Gy
@@ -76,6 +114,17 @@ def dvh_metrics(dose: np.ndarray, mask: np.ndarray) -> dict:
         "V95":  float(100.0 * (roi >= 95.0).sum() / len(roi)),
         "V100": float(100.0 * (roi >= 100.0).sum() / len(roi)),
     }
+
+    # D0.1cc: proxy de Dmax más robusto que el máximo puntual (menos sensible a
+    # un solo voxel ruidoso), pero requiere saber cuántos voxels de la máscara
+    # downsampleada equivalen a 0.1cc reales — se calibra con el volumen nativo.
+    if vol_struct_cc is not None and vol_struct_cc == vol_struct_cc and vol_struct_cc > 0:
+        pct_volumen_01cc = min(100.0, 100.0 * 0.1 / vol_struct_cc)
+        out["D01cc"] = float(np.percentile(roi, 100.0 - pct_volumen_01cc))
+    else:
+        out["D01cc"] = float("nan")
+
+    return out
 
 
 def evaluar_constraints(metricas_predichas: dict, constraints_cfg) -> dict:
@@ -192,6 +241,123 @@ def dvh_score_openkbp(real_dvh: dict, pred_dvh: dict, structures: list) -> float
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Bloques adicionales de puntos DVH (bias/MAE agregados, pred vs. real)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Bloque 1 — PTV: D95/D98/D99 estándar + D01cc como proxy de Dmax (más robusto
+# que el máximo puntual). Bloque 2 — OARs: Dmean + banda baja de dosis (Rectum).
+# Bloque 3 — OARs: puntos V en Gy relevantes clínicamente (ya en % de volumen).
+BLOQUE1_PTV_DVH        = ["D95", "D98", "D99", "D01cc"]
+BLOQUE2_OAR_DVH        = {"rectum": ["Dmean", "D30", "D15", "D10"], "bladder": ["Dmean"]}
+BLOQUE3_OAR_VOLUMEN    = {"rectum": ["V65", "V55", "V50", "V45", "V40"],
+                           "bladder": ["V65", "V55", "V50", "V45", "V40"]}
+
+
+def bias_mae(df: pd.DataFrame, real_col: str, pred_col: str) -> dict:
+    """bias = mean(pred-real), mae = mean(|pred-real|), ignorando NaN (p.ej.
+    D01cc sin vol_ptv_cc disponible)."""
+    real = df[real_col].to_numpy(dtype=float)
+    pred = df[pred_col].to_numpy(dtype=float)
+    valid = ~np.isnan(real) & ~np.isnan(pred)
+    if valid.sum() == 0:
+        return {"bias": float("nan"), "mae": float("nan"), "n": 0}
+    diff = pred[valid] - real[valid]
+    return {"bias": float(np.mean(diff)), "mae": float(np.mean(np.abs(diff))), "n": int(valid.sum())}
+
+
+def calcular_bloques_dvh_adicionales(df: pd.DataFrame) -> dict:
+    """Bias/MAE (en % de prescripción para bloques 1 y 2; en puntos porcentuales
+    de volumen para el bloque 3) sobre los puntos DVH ya guardados en el CSV."""
+    bloque1 = {k: bias_mae(df, f"real_ptv_{k}", f"pred_ptv_{k}") for k in BLOQUE1_PTV_DVH}
+    bloque2 = {f"{struct}_{k}": bias_mae(df, f"real_{struct}_{k}", f"pred_{struct}_{k}")
+               for struct, keys in BLOQUE2_OAR_DVH.items() for k in keys}
+    bloque3 = {f"{struct}_{k}": bias_mae(df, f"real_{struct}_{k}", f"pred_{struct}_{k}")
+               for struct, keys in BLOQUE3_OAR_VOLUMEN.items() for k in keys}
+    return {
+        "bloque1_ptv_puntos_dvh_pct_rx": bloque1,
+        "bloque2_oar_puntos_dvh_pct_rx": bloque2,
+        "bloque3_oar_puntos_v_pp_volumen": bloque3,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Formato Lempart 2021 / Kajikawa 2019 (J Radiat Res 60:685)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Lempart: PTV D95/D98/D99/D2 (D2 = Dx% estándar, no D01cc — ver nota en la
+# llamada), Rectum Dmean/D30/D15/D10, Bladder Dmean, Body D0.1% (near-max).
+LEMPART_POINTS = {
+    "ptv":     ["D95", "D98", "D99", "D2"],
+    "rectum":  ["Dmean", "D30", "D15", "D10"],
+    "bladder": ["Dmean"],
+    "body":    ["D0_1pct"],
+}
+
+# Kajikawa Tabla 2: los 4 puntos exactos del paper (D2/D98 de PTV coinciden con
+# Lempart; V65Gy de Rectum/Bladder son puntos nuevos, no en el bloque Lempart).
+KAJIKAWA_POINTS = [("ptv", "D2"), ("ptv", "D98"), ("rectum", "V65"), ("bladder", "V65")]
+
+
+def diff_stats(df: pd.DataFrame, real_col: str, pred_col: str) -> dict:
+    """Estadísticos de (pred-real) por paciente, ignorando NaN: media y std del
+    error CON signo (mean_signed/std_signed — formato Lempart) y media/std del
+    error absoluto (mae/std_abs — formato Kajikawa, 'MAE ± 1SD'). std con
+    ddof=1 (igual convención que pandas .std(), usada en el resto del summary)."""
+    real = df[real_col].to_numpy(dtype=float)
+    pred = df[pred_col].to_numpy(dtype=float)
+    valid = ~np.isnan(real) & ~np.isnan(pred)
+    n = int(valid.sum())
+    if n == 0:
+        return {"n": 0, "mean_signed": float("nan"), "std_signed": float("nan"),
+                "mae": float("nan"), "std_abs": float("nan")}
+    diff = pred[valid] - real[valid]
+    abs_diff = np.abs(diff)
+    return {
+        "n": n,
+        "mean_signed": float(np.mean(diff)),
+        "std_signed":  float(np.std(diff, ddof=1)) if n > 1 else float("nan"),
+        "mae":         float(np.mean(abs_diff)),
+        "std_abs":     float(np.std(abs_diff, ddof=1)) if n > 1 else float("nan"),
+    }
+
+
+def calcular_formato_lempart_kajikawa(df: pd.DataFrame) -> dict:
+    """Agrega los bloques 'lempart_format' (mean_pct_error/std_pct_error/mae_pct
+    por punto, ya en % de prescripción porque la dosis en este pipeline ya está
+    normalizada a %Rx — sin rescalado adicional) y 'kajikawa_format' (MAE ± 1SD
+    de los 4 puntos de su Tabla 2) al summary.json."""
+    lempart = {}
+    for struct, keys in LEMPART_POINTS.items():
+        for k in keys:
+            s = diff_stats(df, f"real_{struct}_{k}", f"pred_{struct}_{k}")
+            lempart[f"{struct}_{k}"] = {
+                "mean_pct_error": s["mean_signed"],
+                "std_pct_error":  s["std_signed"],
+                "mae_pct":        s["mae"],
+                "n":              s["n"],
+            }
+
+    kajikawa = {}
+    for struct, k in KAJIKAWA_POINTS:
+        s = diff_stats(df, f"real_{struct}_{k}", f"pred_{struct}_{k}")
+        kajikawa[f"{struct}_{k}"] = {"mae": s["mae"], "sd": s["std_abs"], "n": s["n"]}
+
+    return {"lempart_format": lempart, "kajikawa_format": kajikawa}
+
+
+def agregar_columnas_lempart_kajikawa(df: pd.DataFrame) -> pd.DataFrame:
+    """Agrega al CSV per-patient las columnas lf_/kf_ (error con signo pred-real,
+    ya en % de prescripción o pp de volumen según el punto — los agregados del
+    summary.json toman mean/std/abs de estas mismas columnas)."""
+    for struct, keys in LEMPART_POINTS.items():
+        for k in keys:
+            df[f"lf_{struct}_{k}"] = df[f"pred_{struct}_{k}"] - df[f"real_{struct}_{k}"]
+    for struct, k in KAJIKAWA_POINTS:
+        df[f"kf_{struct}_{k}"] = df[f"pred_{struct}_{k}"] - df[f"real_{struct}_{k}"]
+    return df
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Carga de modelo (compartida entre modo normo y modo hipo)
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -302,16 +468,21 @@ def main():
         rectum    = batch["rectum_mask"][0].numpy()
         bladder   = batch["bladder_mask"][0].numpy()
 
-        # Métricas
+        vol_ptv_cc = cargar_vol_ptv_cc(cfg.data.processed_dir, anonid)
+
+        # Métricas ("body" solo se usa para D0_1pct del bloque Lempart/Kajikawa —
+        # el resto de sus claves de dvh_metrics no tiene uso clínico pero no molesta)
         m_real = {
-            "ptv":     dvh_metrics(dose_real, ptv),
+            "ptv":     dvh_metrics(dose_real, ptv, vol_struct_cc=vol_ptv_cc),
             "rectum":  dvh_metrics(dose_real, rectum),
             "bladder": dvh_metrics(dose_real, bladder),
+            "body":    dvh_metrics(dose_real, body),
         }
         m_pred = {
-            "ptv":     dvh_metrics(dose_pred, ptv),
+            "ptv":     dvh_metrics(dose_pred, ptv, vol_struct_cc=vol_ptv_cc),
             "rectum":  dvh_metrics(dose_pred, rectum),
             "bladder": dvh_metrics(dose_pred, bladder),
+            "body":    dvh_metrics(dose_pred, body),
         }
 
         # OpenKBP scores
@@ -350,6 +521,11 @@ def main():
                 fila[f"real_{struct}_{k}"] = v
             for k, v in m_pred[struct].items():
                 fila[f"pred_{struct}_{k}"] = v
+        # Body: solo D0_1pct/Dmean (el resto de dvh_metrics no tiene uso clínico
+        # sobre BODY entero — evita ensuciar el CSV con V40..V100 de BODY)
+        for k in ("D0_1pct", "Dmean"):
+            fila[f"real_body_{k}"] = m_real["body"][k]
+            fila[f"pred_body_{k}"] = m_pred["body"][k]
         # Cumplimiento (1=cumple, 0=no)
         for k, v in cumple_real.items():
             fila[f"real_{k}"] = int(v)
@@ -366,6 +542,7 @@ def main():
 
     # ── Guardar CSV
     df = pd.DataFrame(filas)
+    df = agregar_columnas_lempart_kajikawa(df)
     df.to_csv(output_dir / "test_metrics.csv", index=False, sep=";")
     print(f"\nMétricas guardadas en {output_dir / 'test_metrics.csv'}")
 
@@ -381,6 +558,10 @@ def main():
         "dvh_score":     {"mean": float(df["dvh_score_openkbp"].mean()),
                           "std":  float(df["dvh_score_openkbp"].std())},
     }
+
+    # Bloques adicionales de puntos DVH (bias/MAE pred vs. real)
+    summary.update(calcular_bloques_dvh_adicionales(df))
+    summary.update(calcular_formato_lempart_kajikawa(df))
 
     # Tasa de acuerdo en cumplimiento de constraints
     acuerdo = {}
@@ -412,6 +593,27 @@ def main():
     for k, v in acuerdo.items():
         print(f"  {k}: {v['agreement_pct']:.1f}% (real cumple: {v['real_cumple']}, "
               f"pred cumple: {v['pred_cumple']})")
+
+    print("\n=== Bloque 1 — PTV, puntos DVH (bias / MAE, % Rx) ===")
+    for k, v in summary["bloque1_ptv_puntos_dvh_pct_rx"].items():
+        print(f"  {k}: bias={v['bias']:+.3f}  MAE={v['mae']:.3f}  (n={v['n']})")
+
+    print("\n=== Bloque 2 — OARs, puntos DVH (bias / MAE, % Rx) ===")
+    for k, v in summary["bloque2_oar_puntos_dvh_pct_rx"].items():
+        print(f"  {k}: bias={v['bias']:+.3f}  MAE={v['mae']:.3f}  (n={v['n']})")
+
+    print("\n=== Bloque 3 — OARs, puntos V (bias / MAE, pp de volumen) ===")
+    for k, v in summary["bloque3_oar_puntos_v_pp_volumen"].items():
+        print(f"  {k}: bias={v['bias']:+.3f}  MAE={v['mae']:.3f}  (n={v['n']})")
+
+    print("\n=== Formato Lempart 2021 (mean_pct_error ± std_pct_error, mae_pct) ===")
+    for k, v in summary["lempart_format"].items():
+        print(f"  {k}: {v['mean_pct_error']:+.3f} ± {v['std_pct_error']:.3f}  "
+              f"MAE={v['mae_pct']:.3f}  (n={v['n']})")
+
+    print("\n=== Formato Kajikawa 2019 (MAE ± 1SD) ===")
+    for k, v in summary["kajikawa_format"].items():
+        print(f"  {k}: {v['mae']:.3f} ± {v['sd']:.3f}  (n={v['n']})")
 
 
 if __name__ == "__main__":

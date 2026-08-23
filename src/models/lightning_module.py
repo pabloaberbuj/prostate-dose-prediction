@@ -11,6 +11,7 @@ Estrategia:
 import torch
 import torch.nn.functional as F
 import pytorch_lightning as pl
+from torch.utils.checkpoint import checkpoint
 
 from src.models.unet2d import build_model
 from src.losses.losses import CombinedLoss
@@ -88,11 +89,28 @@ class DosePredictionModule(pl.LightningModule):
         """
         x_volumen: (B, Z, C, H, W)
         Devuelve dosis predicha: (B, Z, H, W)
+
+        arch == 'unet3d': el modelo consume el volumen completo (convs 3D
+        cruzan Z) — se permuta a (B, C, Z, H, W), a diferencia de 'unet2d'
+        que aplana B*Z y corre cortes 2D independientes en paralelo.
         """
         B, Z, C, H, W = x_volumen.shape
+        if self.cfg.model.arch == "unet3d":
+            x_3d = x_volumen.permute(0, 2, 1, 3, 4)   # (B, C, Z, H, W)
+            pred_3d = self.model(x_3d)                # (B, 1, Z, H, W)
+            pred = pred_3d.squeeze(1)                 # (B, Z, H, W)
+            return pred
         # Aplanar B y Z para procesar todos los cortes en paralelo
         x_2d = x_volumen.view(B * Z, C, H, W)
-        pred_2d = self.model(x_2d)  # (B*Z, 1, H, W)
+        if self.training and torch.is_grad_enabled():
+            # Gradient checkpointing: recomputa el forward completo del U-Net
+            # durante el backward en vez de retener las activaciones de las
+            # B*Z "copias" simultaneas (pacientes con muchos cortes, ej. Z=80,
+            # agotaban la VRAM con batch_size=1 -- ver CLAUDE_CODE_CONTEXT.md).
+            # Resultado numerico identico, solo cambia el tradeoff memoria/compute.
+            pred_2d = checkpoint(self.model, x_2d, use_reentrant=False)
+        else:
+            pred_2d = self.model(x_2d)  # (B*Z, 1, H, W)
         pred = pred_2d.view(B, Z, H, W)
         return pred
 
@@ -122,6 +140,9 @@ class DosePredictionModule(pl.LightningModule):
                  prog_bar=True, batch_size=bs)
         if 'moment' in losses:
             self.log(f"{stage}/moment", losses['moment'], on_step=False, on_epoch=True,
+                     batch_size=bs)
+        if 'dvh' in losses:
+            self.log(f"{stage}/dvh_loss", losses['dvh'], on_step=False, on_epoch=True,
                      batch_size=bs)
 
         for nombre, valor in metrics.items():

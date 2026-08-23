@@ -5,9 +5,17 @@ Recalcula, directamente sobre (dose_norm, mask) ya downsampleados a 256x256 dent
 de cada NPZ de processed_hipo/ (sin interpolar de nuevo ni volver a la grilla nativa),
 las metricas de DVH que va a ver el modelo:
 
-  PTV:     D95, D98, V70Gy (=V100% de 70Gy), V95%, V98%.
-  Rectum:  V65Gy, V55Gy, V45Gy, Dmean.
-  Bladder: V65Gy, V55Gy, V45Gy, Dmean.
+  PTV:     D95, D98, D99, D2, D01cc (proxy de Dmax, calibrado con
+           meta['vol_ptv_cc'] nativo — ver dosis_d01cc), V70Gy (=V100% de
+           70Gy), V95%, V98%.
+  Rectum:  V65Gy, V55Gy, V50Gy, V45Gy, V40Gy, Dmean, D30Gy, D15Gy, D10Gy.
+  Bladder: V65Gy, V55Gy, V50Gy, V45Gy, V40Gy, Dmean.
+  Body:    D0.1% (near-max, formato Lempart/Kajikawa).
+
+⚠️ Nota: --csv (metricas_planes_hipofx_D95norm.csv, fuente de "dicoms hipofx")
+ya no existe en disco (limpieza de espacio, 2026-08) — para regenerar SOLO las
+columnas *_gt256 sin el cross-check de la Parte C, usar
+data/regen_gt_dvh_hipo_sin_crosscheck.py (mismo calcular_dvh_paciente()).
 
 Y hace un cross-check unico contra los flags Flag_*_D95norm del CSV (ESAPI, grilla
 nativa) para los 3 constraints operativos (RV65, RV55, BV65).
@@ -78,6 +86,18 @@ def dosis_percentil(dose_gy: np.ndarray, mask: np.ndarray, pct_volumen: float) -
     return float(np.percentile(vals, 100.0 - pct_volumen))
 
 
+def dosis_d01cc(dose_gy: np.ndarray, mask: np.ndarray, vol_struct_cc: float) -> float:
+    """D0.1cc: proxy de Dmax más robusto que el máximo puntual. La máscara está
+    downsampleada a 256x256, así que 0.1cc real no equivale a un voxel fijo —
+    se calibra el % de volumen que representan 0.1cc con el volumen NATIVO de
+    la estructura (meta['vol_ptv_cc'], calculado en preprocess_hipo.py antes de
+    downsamplear), igual que en scripts/compute_overlap_real.py."""
+    if vol_struct_cc is None or vol_struct_cc != vol_struct_cc or vol_struct_cc <= 0:
+        return float("nan")
+    pct_volumen_01cc = min(100.0, 100.0 * 0.1 / vol_struct_cc)
+    return dosis_percentil(dose_gy, mask, pct_volumen_01cc)
+
+
 def calcular_dvh_paciente(npz_path: Path) -> dict:
     data = np.load(str(npz_path), allow_pickle=True)
     meta = json.loads(str(data["meta"][0]))
@@ -86,23 +106,38 @@ def calcular_dvh_paciente(npz_path: Path) -> dict:
     ptv_mask     = data["ptv_mask"]
     rectum_mask  = data["rectum_mask"]
     bladder_mask = data["bladder_mask"]
+    body_mask    = data["body_mask"]
 
     fila = {"AnonID": meta["anonid"], "Status": meta.get("Status", "")}
+    vol_ptv_cc = meta.get("vol_ptv_cc")
 
     # --- PTV ---
     fila["PTV_D95_Gy_gt256"] = dosis_percentil(dose_gy, ptv_mask, 95)
     fila["PTV_D98_Gy_gt256"] = dosis_percentil(dose_gy, ptv_mask, 98)
+    fila["PTV_D99_Gy_gt256"] = dosis_percentil(dose_gy, ptv_mask, 99)
+    fila["PTV_D2_Gy_gt256"] = dosis_percentil(dose_gy, ptv_mask, 2)
+    fila["PTV_D01cc_Gy_gt256"] = dosis_d01cc(dose_gy, ptv_mask, vol_ptv_cc)
     fila["PTV_V70Gy_pct_gt256"] = volumen_pct_sobre_umbral(dose_gy, ptv_mask, 70.0)
     fila["PTV_V95pct_pct_gt256"] = volumen_pct_sobre_umbral(dose_gy, ptv_mask, 0.95 * PRESCRIPCION_GY)
     fila["PTV_V98pct_pct_gt256"] = volumen_pct_sobre_umbral(dose_gy, ptv_mask, 0.98 * PRESCRIPCION_GY)
+
+    # --- Body: D0.1% (near-max, formato Lempart/Kajikawa) ---
+    fila["Body_D0_1pct_Gy_gt256"] = dosis_percentil(dose_gy, body_mask, 0.1)
 
     # --- Rectum / Bladder ---
     for oar_name, mask in (("Rectum", rectum_mask), ("Bladder", bladder_mask)):
         fila[f"{oar_name}_V65Gy_gt256"] = volumen_pct_sobre_umbral(dose_gy, mask, 65.0)
         fila[f"{oar_name}_V55Gy_gt256"] = volumen_pct_sobre_umbral(dose_gy, mask, 55.0)
+        fila[f"{oar_name}_V50Gy_gt256"] = volumen_pct_sobre_umbral(dose_gy, mask, 50.0)
         fila[f"{oar_name}_V45Gy_gt256"] = volumen_pct_sobre_umbral(dose_gy, mask, 45.0)
+        fila[f"{oar_name}_V40Gy_gt256"] = volumen_pct_sobre_umbral(dose_gy, mask, 40.0)
         vals = dose_gy[mask > 0]
         fila[f"{oar_name}_Dmean_gt256"] = float(np.mean(vals)) if len(vals) else float("nan")
+
+    # --- Rectum: banda baja de dosis (D30/D15/D10) ---
+    fila["Rectum_D30Gy_gt256"] = dosis_percentil(dose_gy, rectum_mask, 30)
+    fila["Rectum_D15Gy_gt256"] = dosis_percentil(dose_gy, rectum_mask, 15)
+    fila["Rectum_D10Gy_gt256"] = dosis_percentil(dose_gy, rectum_mask, 10)
 
     # --- Flags GT (1 = cumple, igual convencion que el CSV) ---
     fila["Flag_Rectum_V65Gy_lt15_gt256"]  = int(fila["Rectum_V65Gy_gt256"]  < UMBRALES["Rectum_V65Gy_lt15"])

@@ -50,6 +50,9 @@ CT_HU_MAX      =  1500.0
 INPLANE_SIZE   = 256
 Z_MARGIN       = 5        # cortes adicionales arriba/abajo del ROI
 PSDM_NORM_CM   = 15.0     # normalización PSDM: divide por este valor → [-1, 1] aprox
+INPLANE_CROP_MM = 500.0   # lado de la caja de recorte en el plano, centrada en centroide PTV
+                          # (medido sobre 44 pacientes 2026-08-23: garantiza PTV/Rectum/Bladder
+                          # completos siempre; BODY completo en 97.7%, resto clipea lateral)
 
 OPCIONES_PTV   = ['PTV', 'PTV_High', 'PTV_High2', 'PTV_Abr22', 'PTVp']
 OPCIONES_BODY  = ['BODY', 'body', 'Body', 'External', 'Body1', 'BODY1']
@@ -58,42 +61,57 @@ OAR_NAMES      = ['Rectum', 'Bladder']
 # ─── Helpers DICOM ────────────────────────────────────────────────────────────
 
 def cargar_ct(carpeta: Path) -> sitk.Image:
-    """Lee la serie CT desde la carpeta y devuelve sitk.Image 3D (HU)."""
+    """Lee la serie CT desde la carpeta y devuelve sitk.Image 3D (HU).
+
+    La carpeta mezcla CT + RD + RS + RP, así que hay que elegir explícitamente
+    la serie con Modality == 'CT': GetGDCMSeriesFileNames() sin seriesID devuelve
+    la primera serie que encuentra por orden de SeriesInstanceUID, que en este
+    dataset resulta ser la serie RD de 1 archivo (dosis), no la CT real. Esto es
+    lo que antes causaba el falso bug de "CT leída en 4D" — era el RD mal leído,
+    no un problema real de la CT (confirmado por auditoría, 2026-08-23).
+    """
     reader = sitk.ImageSeriesReader()
-    archivos = reader.GetGDCMSeriesFileNames(str(carpeta))
-    if not archivos:
-        raise FileNotFoundError(f"No se encontró serie CT en {carpeta}")
+    series_ids = reader.GetGDCMSeriesIDs(str(carpeta))
+    if not series_ids:
+        raise FileNotFoundError(f"No se encontraron series DICOM en {carpeta}")
+
+    candidatos_ct = []
+    for sid in series_ids:
+        archivos_sid = reader.GetGDCMSeriesFileNames(str(carpeta), sid)
+        if not archivos_sid:
+            continue
+        try:
+            modality = str(pydicom.dcmread(archivos_sid[0], stop_before_pixels=True).Modality)
+        except Exception:
+            continue
+        if modality == 'CT':
+            candidatos_ct.append(archivos_sid)
+
+    if not candidatos_ct:
+        raise FileNotFoundError(f"No se encontró ninguna serie con Modality=='CT' en {carpeta}")
+
+    # Si hay más de una serie CT, quedarse con la de más archivos (la CT de planificación completa)
+    archivos = max(candidatos_ct, key=len)
+
     reader.SetFileNames(archivos)
     reader.MetaDataDictionaryArrayUpdateOn()
     imagen = reader.Execute()
 
-    # SimpleITK a veces lee CTs de Eclipse como 4D (dirección 4×4=16 elementos).
-    # Si eso ocurre, extraer el subvolumen 3D del primer componente.
-    if len(imagen.GetDirection()) == 16:
-        imagen = sitk.Extract(
-            imagen,
-            size=[imagen.GetSize()[0], imagen.GetSize()[1], imagen.GetSize()[2], 0],
-            index=[0, 0, 0, 0],
+    if imagen.GetDimension() != 3 or len(imagen.GetDirection()) != 9:
+        raise ValueError(
+            f"CT de {carpeta} no es 3D tras cargar la serie CT "
+            f"(dirección de longitud {len(imagen.GetDirection())})"
         )
-        # Si aún tiene 4 dimensiones, forzar con Cast + GetArrayFromImage
-        if imagen.GetDimension() != 3:
-            array = sitk.GetArrayFromImage(imagen)
-            if array.ndim == 4:
-                array = array[0]  # tomar primer componente
-            imagen_3d = sitk.GetImageFromArray(array)
-            # Reconstruir dirección 3×3 desde la 4×4 original
-            dir16 = list(imagen.GetDirection())
-            dir9  = [dir16[0], dir16[1], dir16[2],
-                     dir16[4], dir16[5], dir16[6],
-                     dir16[8], dir16[9], dir16[10]]
-            imagen_3d.SetDirection(dir9)
-            imagen_3d.SetOrigin(imagen.GetOrigin()[:3])
-            imagen_3d.SetSpacing(imagen.GetSpacing()[:3])
-            imagen = imagen_3d
 
-    # Verificación final
-    if len(imagen.GetDirection()) != 9:
-        raise ValueError(f"CT sigue con dirección de longitud {len(imagen.GetDirection())} tras corrección")
+    # Rango HU plausible: tiene que haber aire (<-500) y hueso/tejido denso (>200).
+    # Si no, casi seguro se coló la serie equivocada otra vez.
+    array_hu = sitk.GetArrayFromImage(imagen)
+    hu_min, hu_max = float(array_hu.min()), float(array_hu.max())
+    if hu_min > -500.0 or hu_max < 200.0:
+        raise ValueError(
+            f"CT de {carpeta} con rango HU no plausible (min={hu_min:.1f}, max={hu_max:.1f}) "
+            f"— posible serie equivocada"
+        )
 
     return imagen
 
@@ -219,6 +237,67 @@ def contornos_a_mascara(contornos: list, imagen_ref: sitk.Image) -> np.ndarray:
         mascara[iz, rr, cc] = 1
 
     return mascara
+
+
+# ─── Recorte en el plano ──────────────────────────────────────────────────────
+# Asumen imagen_ref con dirección axis-aligned (identidad) — verificado empíricamente
+# en este dataset (2026-08-23): sin gantry tilt, mapeo índice→físico simple es correcto.
+
+def centroide_fisico(mascara: np.ndarray, imagen_ref: sitk.Image) -> tuple:
+    """Centroide de masa (x,y) en mm físicos de una máscara binaria ZYX."""
+    idx = np.argwhere(mascara > 0)
+    if idx.size == 0:
+        raise ValueError("Máscara vacía — no se puede calcular centroide")
+    origen, spacing = imagen_ref.GetOrigin(), imagen_ref.GetSpacing()
+    cx = origen[0] + idx[:, 2].mean() * spacing[0]
+    cy = origen[1] + idx[:, 1].mean() * spacing[1]
+    return cx, cy
+
+
+def extensiones_mascara(mascara: np.ndarray, imagen_ref: sitk.Image, cx: float, cy: float) -> dict:
+    """+X,-X,+Y,-Y en mm desde (cx,cy) hasta el vóxel más lejano de la máscara en cada dirección."""
+    idx = np.argwhere(mascara > 0)
+    if idx.size == 0:
+        return {"+X": 0.0, "-X": 0.0, "+Y": 0.0, "-Y": 0.0}
+    origen, spacing = imagen_ref.GetOrigin(), imagen_ref.GetSpacing()
+    dx = origen[0] + idx[:, 2] * spacing[0] - cx
+    dy = origen[1] + idx[:, 1] * spacing[1] - cy
+    return {
+        "+X": float(max(dx.max(), 0.0)), "-X": float(max(-dx.min(), 0.0)),
+        "+Y": float(max(dy.max(), 0.0)), "-Y": float(max(-dy.min(), 0.0)),
+    }
+
+
+def calcular_recorte_plano(imagen_ref: sitk.Image, cx: float, cy: float, lado_mm: float) -> dict:
+    """Índices [row_min:row_max, col_min:col_max] sobre la grilla nativa de imagen_ref para
+    una caja cuadrada de lado_mm centrada en (cx,cy), más el padding necesario por lado si la
+    caja pedida cae fuera del FOV real de la CT (paciente ancho)."""
+    origen, spacing, size = imagen_ref.GetOrigin(), imagen_ref.GetSpacing(), imagen_ref.GetSize()
+    half = lado_mm / 2.0
+
+    col_min = int(round((cx - half - origen[0]) / spacing[0]))
+    col_max = int(round((cx + half - origen[0]) / spacing[0]))
+    row_min = int(round((cy - half - origen[1]) / spacing[1]))
+    row_max = int(round((cy + half - origen[1]) / spacing[1]))
+
+    return {
+        "row_min": max(0, row_min), "row_max": min(size[1], row_max),
+        "col_min": max(0, col_min), "col_max": min(size[0], col_max),
+        "pad_top":    max(0, -row_min), "pad_bottom": max(0, row_max - size[1]),
+        "pad_left":   max(0, -col_min), "pad_right":  max(0, col_max - size[0]),
+    }
+
+
+def aplicar_recorte_plano(array_zyx: np.ndarray, rec: dict, fill_value: float) -> np.ndarray:
+    """Recorta en Y,X según `rec` y rellena con fill_value donde la caja pedida se sale del FOV."""
+    recortado = array_zyx[:, rec["row_min"]:rec["row_max"], rec["col_min"]:rec["col_max"]]
+    if any(rec[k] > 0 for k in ("pad_top", "pad_bottom", "pad_left", "pad_right")):
+        recortado = np.pad(
+            recortado,
+            ((0, 0), (rec["pad_top"], rec["pad_bottom"]), (rec["pad_left"], rec["pad_right"])),
+            mode="constant", constant_values=fill_value,
+        )
+    return recortado.astype(array_zyx.dtype)
 
 
 # ─── Cálculo de PSDM ─────────────────────────────────────────────────────────
@@ -388,24 +467,65 @@ def procesar_paciente(anonid: str, carpeta_dicom: Path, output_dir: Path) -> dic
     # 4. Remuestrear dosis al espacio CT
     dosis_cgy = remuestrear_a_ct(rd_sitk, ct_sitk, sitk.sitkLinear)
 
-    # 5. CT array y normalización HU
+    # 5. CT array y normalización HU (sobre grilla nativa completa, antes de recortar)
     ct_array = sitk.GetArrayFromImage(ct_sitk).astype(np.float32)
     ct_norm  = np.clip(ct_array, CT_HU_MIN, CT_HU_MAX)
     ct_norm  = (ct_norm - CT_HU_MIN) / (CT_HU_MAX - CT_HU_MIN)  # [0, 1]
     ct_norm  = ct_norm * 2.0 - 1.0                               # [-1, 1]
 
-    # 6. Normalizar dosis a D95(PTV) = 100%
+    # 6. Normalizar dosis a D95(PTV) = 100% (sobre máscara PTV nativa completa, sin recortar:
+    #    el PTV siempre entra en la caja de recorte, así que el D95 no cambia por recortar)
     dosis_norm_pct, factor_norm = normalizar_dosis(dosis_cgy, ptv_mask)
 
-    # 7. Calcular PSDM (en espacio CT, antes de downsample para máxima precisión)
     spacing_mm = ct_sitk.GetSpacing()  # (sx, sy, sz) en mm
+
+    # 7. Recorte en el plano: caja cuadrada de INPLANE_CROP_MM centrada en el centroide del
+    #    PTV. PTV/Rectum/Bladder deben entrar siempre completos (medido sobre 44 pacientes,
+    #    2026-08-23) — si no, es un caso anómalo y se aborta el paciente para revisión manual
+    #    en vez de guardar una máscara de OAR/PTV truncada en silencio. BODY sí puede clipear
+    #    en lateral (esperado en pacientes anchos) — eso queda como warning, no error.
+    cx, cy = centroide_fisico(ptv_mask, ct_sitk)
+    half_mm = INPLANE_CROP_MM / 2.0
+
+    clip_oar = {}
+    for nombre, mascara in [('PTV', ptv_mask), ('Rectum', rectum_mask), ('Bladder', bladder_mask)]:
+        ext = extensiones_mascara(mascara, ct_sitk, cx, cy)
+        excedente = {d: round(v - half_mm, 1) for d, v in ext.items() if v > half_mm}
+        if excedente:
+            clip_oar[nombre] = excedente
+    if clip_oar:
+        raise ValueError(
+            f"{anonid}: recorte de {INPLANE_CROP_MM/10:.0f}cm corta OAR/PTV — revisar caso "
+            f"a mano (excedentes mm: {clip_oar})"
+        )
+
+    ext_body = extensiones_mascara(body_mask, ct_sitk, cx, cy)
+    clip_body = {d: round(v - half_mm, 1) for d, v in ext_body.items() if v > half_mm}
+    if clip_body:
+        log.warning(
+            f"{anonid}: BODY lateral clipeado {clip_body} mm por el recorte de "
+            f"{INPLANE_CROP_MM/10:.0f}cm, sin afectar OARs/PTV — impacto esperado en piel/grasa "
+            f"de zona de dosis baja"
+        )
+
+    rec = calcular_recorte_plano(ct_sitk, cx, cy, INPLANE_CROP_MM)
+    ct_norm        = aplicar_recorte_plano(ct_norm,        rec, fill_value=-1.0)
+    dosis_norm_pct = aplicar_recorte_plano(dosis_norm_pct, rec, fill_value=0.0)
+    ptv_mask       = aplicar_recorte_plano(ptv_mask,       rec, fill_value=0)
+    body_mask      = aplicar_recorte_plano(body_mask,      rec, fill_value=0)
+    rectum_mask    = aplicar_recorte_plano(rectum_mask,    rec, fill_value=0)
+    bladder_mask   = aplicar_recorte_plano(bladder_mask,   rec, fill_value=0)
+
+    # 8. Calcular PSDM sobre la máscara nativa YA RECORTADA (mismo spacing nativo — el recorte
+    #    no resamplea, solo acota el FOV, así que la distancia física a cada estructura no
+    #    cambia salvo muy cerca del borde nuevo de la caja).
     spacing_zyx_mm = (spacing_mm[2], spacing_mm[1], spacing_mm[0])
 
     psdm_ptv     = calcular_psdm(ptv_mask,     spacing_zyx_mm)
     psdm_rectum  = calcular_psdm(rectum_mask,  spacing_zyx_mm)
     psdm_bladder = calcular_psdm(bladder_mask, spacing_zyx_mm)
 
-    # 8. Agrupar arrays y recortar axialmente
+    # 9. Agrupar arrays y recortar axialmente
     arrays = {
         'ct':           ct_norm.astype(np.float32),
         'dose':         dosis_norm_pct,
@@ -420,21 +540,26 @@ def procesar_paciente(anonid: str, carpeta_dicom: Path, output_dir: Path) -> dic
     arrays = recortar_axial(arrays, margen=Z_MARGIN)
     z_range = arrays.pop('z_range')
 
-    # 9. Downsample in-plane a 256×256
+    # 10. Downsample in-plane a 256×256 (500mm/256 = 1.953mm/px isotrópico, fijo entre pacientes)
     for key in arrays:
         if isinstance(arrays[key], np.ndarray) and arrays[key].ndim == 3:
             arrays[key] = downsample_inplane(arrays[key], INPLANE_SIZE)
 
-    # 10. QC mínimo
+    # 11. QC mínimo
     n_slices  = arrays['ct'].shape[0]
     vol_ptv   = float(ptv_mask.sum()) * np.prod(spacing_mm) / 1000.0  # cc
     dose_max  = float(arrays['dose'].max())
     dose_ptv_d95 = float(np.percentile(arrays['dose'][arrays['ptv_mask'] > 0], 5))
 
-    # 11. Guardar NPZ
+    # 12. Guardar NPZ
     meta = {
         'anonid':         anonid,
-        'spacing_mm':     list(spacing_mm),          # (sx, sy, sz)
+        'spacing_mm':     list(spacing_mm),          # spacing NATIVO (sx, sy, sz) — no confundir
+                                                       # con el spacing efectivo del array guardado
+        'effective_inplane_spacing_mm': INPLANE_CROP_MM / INPLANE_SIZE,  # fijo: 1.953mm/px
+        'crop_lado_mm':        INPLANE_CROP_MM,
+        'centroide_ptv_xy_mm': [round(cx, 2), round(cy, 2)],
+        'body_clip_mm':        clip_body,
         'z_range':        list(z_range),
         'factor_norm':    factor_norm,
         'nombre_ptv':     nombre_ptv or '',
@@ -466,6 +591,7 @@ def procesar_paciente(anonid: str, carpeta_dicom: Path, output_dir: Path) -> dic
         'dose_max':    round(dose_max, 2),
         'dose_d95_ptv': round(dose_ptv_d95, 2),
         'factor_norm': round(factor_norm, 4),
+        'body_clip_mm': clip_body,
     }
 
 
@@ -548,10 +674,14 @@ def main():
         n_slices = [r['n_slices'] for r in ok]
         vol_ptv  = [r['vol_ptv_cc'] for r in ok]
         d95      = [r['dose_d95_ptv'] for r in ok]
+        clipeados = [r for r in ok if r.get('body_clip_mm')]
         log.info(f"\n=== QC ===")
         log.info(f"N cortes/paciente: {np.mean(n_slices):.1f} ± {np.std(n_slices):.1f} [{min(n_slices)}-{max(n_slices)}]")
         log.info(f"Vol PTV (cc):      {np.mean(vol_ptv):.1f} ± {np.std(vol_ptv):.1f}")
         log.info(f"D95 PTV (% pres):  {np.mean(d95):.2f} ± {np.std(d95):.2f} (debe ser ~100)")
+        log.info(f"BODY clipeado (lateral, esperado): {len(clipeados)}/{len(ok)} pacientes")
+        for r in clipeados:
+            log.info(f"  {r['anonid']}: {r['body_clip_mm']}")
 
 
 if __name__ == "__main__":

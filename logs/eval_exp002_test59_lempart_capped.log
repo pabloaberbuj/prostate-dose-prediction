@@ -1,0 +1,54 @@
+[run_eval_capped] GPU total=11.99GiB, cap=2.00GiB -> fraction=0.1668
+W0818 21:52:17.903000 16952 .venv\Lib\site-packages\torch\utils\flop_counter.py:29] triton not found; flop counting will not work for triton kernels
+Seed set to 42
+Cargando checkpoint: checkpoints/exp002_unet2d_psdm/epoch=191.ckpt
+Dispositivo: cuda
+[DataModule] n_slices fijo para padding: 80
+[DataModule] Sin cache — carga desde disco por batch (compute-bound, <3% overhead)
+[DataModule] Train: 265, Val: 60, Test: 59
+
+Evaluando 59 pacientes de test...
+Test:   0%|          | 0/59 [00:00<?, ?it/s]Test:   0%|          | 0/59 [00:01<?, ?it/s]
+Traceback (most recent call last):
+  File "C:\Users\MEVATE~1\AppData\Local\Temp\claude\c--Pablo-ProstateDoseProject\caf9e455-7b20-4360-86f7-acadd97d6486\scratchpad\run_eval_capped.py", line 41, in <module>
+    evaluate.main()
+    ~~~~~~~~~~~~~^^
+  File "c:\Pablo\ProstateDoseProject\repo\scripts\evaluate.py", line 460, in main
+    pred = model(x)
+  File "C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Pablo\ProstateDoseProject\repo\src\models\lightning_module.py", line 104, in forward
+    pred_2d = self.model(x_2d)  # (B*Z, 1, H, W)
+  File "C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Pablo\ProstateDoseProject\repo\src\models\unet2d.py", line 109, in forward
+    x = up(x, skip)
+  File "C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Pablo\ProstateDoseProject\repo\src\models\unet2d.py", line 55, in forward
+    x = self.reduce(x)
+  File "C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\torch\nn\modules\conv.py", line 565, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+           ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\torch\nn\modules\conv.py", line 560, in _conv_forward
+    return F.conv2d(
+           ~~~~~~~~^
+        input, weight, bias, self.stride, self.padding, self.dilation, self.groups
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 320.00 MiB. GPU 0 has a total capacity of 11.99 GiB of which 7.63 GiB is free. 2.00 GiB allowed; Of the allocated memory 1.67 GiB is allocated by PyTorch, and 199.08 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)

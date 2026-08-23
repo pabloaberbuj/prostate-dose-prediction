@@ -27,6 +27,38 @@ def _calcular_dvh(dosis_3d: np.ndarray, mascara: np.ndarray,
     return bins, vol_pct
 
 
+class EpochSummaryCallback(pl.Callback):
+    """Imprime a stdout un resumen de metricas clave cada `every_n_epochs` epochs.
+
+    Complementa la progress bar de Lightning: cuando la salida se redirige a un archivo
+    (ej. `... | Tee-Object -FilePath log.txt` en PowerShell) la progress bar no se refresca
+    bien porque depende de retorno de carro, y monitorear el run se hace dificil. Esto
+    imprime una linea nueva por epoch, siempre legible en un log plano.
+    """
+
+    def __init__(self, every_n_epochs: int = 1):
+        super().__init__()
+        self.every_n_epochs = every_n_epochs
+
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        if (trainer.current_epoch + 1) % self.every_n_epochs != 0:
+            return
+
+        def g(k):
+            v = trainer.callback_metrics.get(k)
+            return f"{v.item():.4f}" if v is not None else "—"
+
+        lr = trainer.optimizers[0].param_groups[0]['lr'] if trainer.optimizers else float('nan')
+        print(
+            f"[epoch {trainer.current_epoch + 1:03d}/{trainer.max_epochs}] "
+            f"train/mae={g('train/mae')}  val/mae={g('val/mae')}  "
+            f"val/mae_ptv_pct={g('val/mae_ptv_pct')}  val/mae_rectum_pct={g('val/mae_rectum_pct')}  "
+            f"val/mae_bladder_pct={g('val/mae_bladder_pct')}  val/dvh_score={g('val/dvh_score')}  "
+            f"lr={lr:.2e}",
+            flush=True,
+        )
+
+
 class DVHLoggingCallback(pl.Callback):
     """Loguea N DVHs comparativos a W&B cada `every_n_epochs`."""
 

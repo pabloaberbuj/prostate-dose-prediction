@@ -1,0 +1,368 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, Arial, sans-serif;
+  background: #14161a;
+  color: #e8e8e8;
+}
+
+.root {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ---- Columna principal: encabezado + semaforo, siempre fijos y protagonistas ---- */
+.col-principal {
+  flex: 1;
+  padding: 32px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.status-pill {
+  align-self: flex-end;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #1a2e22;
+  border: 1px solid #2ecc71;
+  color: #6fe0a0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: 999px;
+  margin-bottom: 18px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2ecc71;
+}
+
+.status-pill.status-off {
+  background: #2a2d31;
+  border-color: #55585e;
+  color: #9aa0a6;
+}
+
+.status-pill.status-off .status-dot {
+  background: #9aa0a6;
+}
+
+.eyebrow {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b6f75;
+  text-align: center;
+  margin-bottom: 6px;
+}
+
+.patient-id {
+  font-size: 2.8rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.1;
+}
+
+.timestamp {
+  font-size: 1.05rem;
+  color: #9aa0a6;
+  text-align: center;
+  margin-top: 6px;
+}
+
+/* ---- Semaforo: lo mas notorio de la pantalla ---- */
+.semaforo {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 64px;
+  flex-wrap: wrap;
+}
+
+.oar-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.oar-circulo {
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #3a3d42;
+  border: 6px solid #55585e;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 18px 40px -14px rgba(0, 0, 0, 0.6);
+  transition: background-color 0.3s, border-color 0.3s;
+}
+
+.oar-label {
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.oar-zona-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.22);
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 1.35rem;
+  font-weight: 900;
+}
+
+.zona-verde   { background: #1e8f4e; border-color: #2ecc71; }
+.zona-naranja { background: #b8720a; border-color: #f39c12; }
+.zona-rojo    { background: #a3241f; border-color: #e74c3c; }
+
+.error-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #4a1f1f;
+  border: 1px solid #e74c3c;
+  color: #ffb3b3;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-top: 24px;
+  font-size: 0.9rem;
+  width: 100%;
+  max-width: 700px;
+}
+
+.error-box.oculto {
+  display: none;
+}
+
+/* ---- Barra lateral: cola + metricas + apertura manual, siempre visible y fija ---- */
+.sidebar {
+  width: 400px;
+  flex-shrink: 0;
+  background: #1a1c20;
+  border-left: 1px solid #2a2d31;
+  padding: 24px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  overflow-y: auto;
+}
+
+.sidebar-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9aa0a6;
+  margin-bottom: 12px;
+}
+
+.sidebar-section-title .badge {
+  background: #113844;
+  color: #5fd4ea;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.badge.oculto {
+  display: none;
+}
+
+.sidebar-divider {
+  height: 1px;
+  background: #2a2d31;
+  margin: 0;
+  border: none;
+}
+
+/* ---- Cola de pacientes pendientes ---- */
+.cola-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cola-item {
+  background: #21242a;
+  border: 1px solid #2a2d31;
+  border-left: 3px solid #22b8cf;
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cola-item-id {
+  font-weight: 700;
+  font-size: 0.98rem;
+}
+
+.cola-item-meta {
+  color: #9aa0a6;
+  font-size: 0.72rem;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cola-item-meta-piece {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.cola-item-carpeta-txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cola-item-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #2e6fd9;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 8px 12px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.cola-item-btn:hover {
+  background: #2559b0;
+}
+
+.cola-item-btn:disabled {
+  background: #3a3d42;
+  cursor: default;
+}
+
+.cola-vacia {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #55585e;
+  text-align: center;
+  padding: 18px 8px;
+  font-size: 0.8rem;
+}
+
+.cola-vacia.oculto {
+  display: none;
+}
+
+/* ---- Metricas del caso: chico, gris, no compite con el semaforo ---- */
+.stat-lista {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid #24272c;
+  font-size: 0.82rem;
+}
+
+.stat-row:last-child {
+  border-bottom: none;
+}
+
+.stat-label {
+  color: #6b6f75;
+}
+
+.stat-value {
+  color: #c7cbd1;
+  font-weight: 600;
+}
+
+/* ---- Apertura manual ---- */
+.manual {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#form-abrir {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-carpeta {
+  padding: 9px 11px;
+  background: #14161a;
+  border: 1px solid #3a3d42;
+  color: #e8e8e8;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.btn-secundario {
+  padding: 9px 14px;
+  background: #2a2d31;
+  color: #e8e8e8;
+  border: 1px solid #3a3d42;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.btn-secundario:hover {
+  background: #33373d;
+}
+
+#manual-status {
+  color: #9aa0a6;
+  font-size: 0.8rem;
+}
+
+/* ---- Pantallas angostas: la barra lateral pasa a debajo del semaforo ---- */
+@media (max-width: 1000px) {
+  .root {
+    flex-direction: column;
+  }
+  .sidebar {
+    width: auto;
+    border-left: none;
+    border-top: 1px solid #2a2d31;
+  }
+}

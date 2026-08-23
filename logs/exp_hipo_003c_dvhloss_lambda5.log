@@ -1,0 +1,62 @@
+W0814 16:11:40.425000 31156 Lib\site-packages\torch\utils\flop_counter.py:29] triton not found; flop counting will not work for triton kernels
+Seed set to 42
+Using 16bit Automatic Mixed Precision (AMP)
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+\U0001f4a1 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+wandb: WARNING The anonymous setting has no effect and will be removed in a future version.
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from C:\Users\MEVATERAPIA_USR\_netrc.
+wandb: Currently logged in as: pablo-aberbuj (pablo-aberbuj-mevaterapia-oncolog-a-radiante) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: setting up run 9d98twuw
+wandb: Tracking run with wandb version 0.27.2
+wandb: Run data is saved locally in lightning_logs\wandb\run-20260814_161148-9d98twuw
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run exp_hipo_003c_dvhloss_lambda5
+wandb:  View project at https://wandb.ai/pablo-aberbuj-mevaterapia-oncolog-a-radiante/prostate-dose-prediction
+wandb:  View run at https://wandb.ai/pablo-aberbuj-mevaterapia-oncolog-a-radiante/prostate-dose-prediction/runs/9d98twuw
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\pytorch_lightning\utilities\model_summary\model_summary.py:242: Precision 16-mixed is not supported by the model summary.  Estimated model size in MB will not be accurate. Using 32 bits instead.
+Cargando pesos iniciales desde checkpoints/exp002_unet2d_psdm/epoch=191.ckpt (init, NO resume)
+  state_dict cargado sin faltantes ni sobrantes: <All keys matched successfully>
+[DataModule] n_slices fijo para padding: 80
+[DataModule] Sin cache — carga desde disco por batch (compute-bound, <3% overhead)
+[DataModule] Train: 98, Val: 22, Test: 31
++-----------------------------------------------------+
+|   | Name    | Type         | Params | Mode  | FLOPs |
+|---+---------+--------------+--------+-------+-------|
+| 0 | model   | UNet2D       |  1.8 M | train |     0 |
+| 1 | loss_fn | CombinedLoss |      0 | train |     0 |
++-----------------------------------------------------+
+Trainable params: 1.8 M                                                        
+Non-trainable params: 0                                                        
+Total params: 1.8 M                                                            
+Total estimated model params size (MB): 7.249                                  
+Modules in train mode: 112                                                     
+Modules in eval mode: 0                                                        
+Total FLOPs: 0                                                                 
+C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\pytorch_lightning\utilities\_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\pytorch_lightning\trainer\connectors\data_connector.py:434: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=23` in the `DataLoader` to improve performance.
+C:\Pablo\ProstateDoseProject\repo\.venv\Lib\site-packages\pytorch_lightning\trainer\connectors\data_connector.py:434: The 'train_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=23` in the `DataLoader` to improve performance.
+Metric val/mae improved. New best score: 2.084
+Metric val/mae improved by 0.031 >= min_delta = 0.0. New best score: 2.054
+Metric val/mae improved by 0.004 >= min_delta = 0.0. New best score: 2.049
+Metric val/mae improved by 0.002 >= min_delta = 0.0. New best score: 2.047
+Metric val/mae improved by 0.003 >= min_delta = 0.0. New best score: 2.044
+Metric val/mae improved by 0.019 >= min_delta = 0.0. New best score: 2.026
+Metric val/mae improved by 0.013 >= min_delta = 0.0. New best score: 2.013
+Metric val/mae improved by 0.001 >= min_delta = 0.0. New best score: 2.012
+Metric val/mae improved by 0.001 >= min_delta = 0.0. New best score: 2.011
+Metric val/mae improved by 0.002 >= min_delta = 0.0. New best score: 2.009
+Metric val/mae improved by 0.005 >= min_delta = 0.0. New best score: 2.004
+Metric val/mae improved by 0.006 >= min_delta = 0.0. New best score: 1.998
+Metric val/mae improved by 0.005 >= min_delta = 0.0. New best score: 1.993
+Monitored metric val/mae did not improve in the last 30 records. Best score: 1.993. Signaling Trainer to stop.
+Epoch 76/99 ---------------- 98/98 0:04:14 • 0:00:00 0.39it/s v_num: twuw      
+                                                              val/loss: 2.225  
+                                                              val/mae: 2.014   
+                                                              val/dvh_score:   
+                                                              1.888 train/loss:
+                                                              2.154 train/mae: 
+                                                              2.001            
+[1;34mwandb[0m: 
+[1;34mwandb[0m: ðŸš€ View run [33mexp_hipo_003c_dvhloss_lambda5[0m at: [34mhttps://wandb.ai/pablo-aberbuj-mevaterapia-oncolog-a-radiante/prostate-dose-prediction/runs/9d98twuw[0m

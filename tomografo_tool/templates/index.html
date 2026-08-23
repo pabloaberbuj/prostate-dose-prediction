@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Herramienta de tomografo</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="root">
+
+    <div class="col-principal">
+      <div class="status-pill {{ 'status-off' if not monitoreo_activo }}">
+        <span class="status-dot"></span>
+        {{ "Monitoreando" if monitoreo_activo else "Apertura manual" }}
+      </div>
+
+      <div class="eyebrow">Herramienta de tomografo</div>
+      <div id="patient-id" class="patient-id">Esperando paciente...</div>
+      <div id="timestamp" class="timestamp"></div>
+
+      <section id="semaforo" class="semaforo">
+        <div class="oar-card">
+          <div class="oar-circulo" id="circulo-recto">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+            <span class="oar-label">RECTO</span>
+            <span class="oar-zona-pill" id="zona-recto">--</span>
+          </div>
+        </div>
+        <div class="oar-card">
+          <div class="oar-circulo" id="circulo-vejiga">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+            <span class="oar-label">VEJIGA</span>
+            <span class="oar-zona-pill" id="zona-vejiga">--</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="error-box" class="error-box oculto"></section>
+    </div>
+
+    <aside class="sidebar">
+      <div>
+        <div class="sidebar-section-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+          Pacientes en cola
+          <span class="badge oculto" id="cola-count"></span>
+        </div>
+        <ul id="cola-lista" class="cola-lista"></ul>
+        <div id="cola-vacia" class="cola-vacia">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+          Sin pacientes en espera
+        </div>
+      </div>
+
+      <hr class="sidebar-divider">
+
+      <div>
+        <div class="sidebar-section-title">Metricas del caso</div>
+        <div id="stat-lista" class="stat-lista">
+          <div class="stat-row"><span class="stat-label">--</span><span class="stat-value">--</span></div>
+        </div>
+      </div>
+
+      <hr class="sidebar-divider">
+
+      <div class="manual">
+        <div class="sidebar-section-title">Abrir manualmente</div>
+        <form id="form-abrir">
+          <input type="text" id="input-carpeta" class="input-carpeta" placeholder="Ruta a carpeta CT+RS DICOM...">
+          <button type="submit" class="btn-secundario">Abrir carpeta</button>
+        </form>
+        <div id="manual-status"></div>
+      </div>
+    </aside>
+
+  </div>
+
+  <script>
+    const ZONA_LABEL = {verde: "VERDE", naranja: "NARANJA", rojo: "ROJO"};
+    let ultimoKey = null;
+
+    function fmt(v) {
+      if (v === null || v === undefined) return "--";
+      if (typeof v === "number") return v.toFixed(2);
+      return String(v);
+    }
+
+    function pintarZona(circuloEl, zonaEl, zona) {
+      circuloEl.classList.remove("zona-verde", "zona-naranja", "zona-rojo");
+      if (zona) circuloEl.classList.add("zona-" + zona);
+      zonaEl.textContent = zona ? ZONA_LABEL[zona] || zona.toUpperCase() : "--";
+    }
+
+    function render(data) {
+      const errorBox = document.getElementById("error-box");
+
+      if (data.estado === "esperando") {
+        document.getElementById("patient-id").textContent = "Esperando paciente...";
+        document.getElementById("timestamp").textContent = "";
+        errorBox.classList.add("oculto");
+        return;
+      }
+
+      document.getElementById("patient-id").textContent = data.patient_id || "(sin ID)";
+      document.getElementById("timestamp").textContent = data.timestamp || "";
+
+      if (data.estado === "error") {
+        errorBox.textContent = "Error procesando el paciente: " + (data.error || "desconocido");
+        errorBox.classList.remove("oculto");
+        pintarZona(document.getElementById("circulo-recto"), document.getElementById("zona-recto"), null);
+        pintarZona(document.getElementById("circulo-vejiga"), document.getElementById("zona-vejiga"), null);
+        document.getElementById("stat-lista").innerHTML = "<div class='stat-row'><span class='stat-label'>--</span><span class='stat-value'>--</span></div>";
+        return;
+      }
+
+      errorBox.classList.add("oculto");
+      pintarZona(document.getElementById("circulo-recto"), document.getElementById("zona-recto"), data.recto.zona);
+      pintarZona(document.getElementById("circulo-vejiga"), document.getElementById("zona-vejiga"), data.vejiga.zona);
+
+      const filas = [
+        ["Vol. Recto (cc)", data.features.VolRectum_cc],
+        ["Vol. Vejiga (cc)", data.features.VolBladder_cc],
+        ["Vol. PTV (cc)", data.features.VolPTV_cc],
+        ["Solapamiento PTV-Recto (cc)", data.features.Solap_PTV_Rectum_cc],
+        ["Solapamiento PTV-Vejiga (cc)", data.features.Solap_PTV_Bladder_cc],
+        ["Solapamiento relativo recto", data.features.overlap_rel_recto],
+        ["Solapamiento relativo vejiga", data.features.overlap_rel_vejiga],
+        ["V65 Recto predicho (%)", data.recto.V65_pred],
+        ["V55 Recto predicho (%)", data.recto.V55_pred],
+        ["V65 Vejiga predicho (%)", data.vejiga.V65_pred],
+      ];
+      document.getElementById("stat-lista").innerHTML = filas
+        .map(([k, v]) => `<div class="stat-row"><span class="stat-label">${k}</span><span class="stat-value">${fmt(v)}</span></div>`)
+        .join("");
+    }
+
+    async function poll() {
+      try {
+        const resp = await fetch("/ultimo");
+        const data = await resp.json();
+        const key = data.estado + "|" + (data.patient_id || "") + "|" + (data.timestamp || "");
+        if (key !== ultimoKey) {
+          ultimoKey = key;
+          render(data);
+        }
+      } catch (e) {
+        console.error("Error consultando /ultimo:", e);
+      }
+    }
+
+    function tiempoEsperando(listoDesdeEpoch) {
+      if (!listoDesdeEpoch) return "";
+      const seg = Math.max(0, Math.round(Date.now() / 1000 - listoDesdeEpoch));
+      if (seg < 60) return `hace ${seg}s`;
+      return `hace ${Math.round(seg / 60)}min`;
+    }
+
+    async function procesarDeCola(carpeta, btn) {
+      btn.disabled = true;
+      btn.textContent = "Procesando...";
+      try {
+        const resp = await fetch("/procesar_cola", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({carpeta}),
+        });
+        const data = await resp.json();
+        ultimoKey = null;
+        render(data);
+        if (!resp.ok) {
+          alert("Error procesando: " + (data.error || "desconocido"));
+        }
+      } catch (e) {
+        alert("Error de red: " + e);
+      } finally {
+        await pollCola();
+      }
+    }
+
+    async function pollCola() {
+      try {
+        const resp = await fetch("/cola");
+        const pendientes = await resp.json();
+        const lista = document.getElementById("cola-lista");
+        const vacia = document.getElementById("cola-vacia");
+        const count = document.getElementById("cola-count");
+
+        if (!pendientes.length) {
+          lista.innerHTML = "";
+          vacia.classList.remove("oculto");
+          count.classList.add("oculto");
+          return;
+        }
+
+        vacia.classList.add("oculto");
+        count.classList.remove("oculto");
+        count.textContent = pendientes.length;
+        lista.innerHTML = pendientes.map((p) => `
+          <li class="cola-item">
+            <div class="cola-item-id">${p.patient_id_hint}</div>
+            <div class="cola-item-meta">
+              <span class="cola-item-meta-piece">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                <span class="cola-item-carpeta-txt">${p.carpeta}</span>
+              </span>
+              <span class="cola-item-meta-piece">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                listo ${tiempoEsperando(p.listo_desde)}
+              </span>
+            </div>
+            <button class="cola-item-btn" data-carpeta="${p.carpeta.replace(/"/g, '&quot;')}">
+              Procesar este
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </button>
+          </li>
+        `).join("");
+
+        lista.querySelectorAll(".cola-item-btn").forEach((btn) => {
+          btn.addEventListener("click", () => procesarDeCola(btn.dataset.carpeta, btn));
+        });
+      } catch (e) {
+        console.error("Error consultando /cola:", e);
+      }
+    }
+
+    document.getElementById("form-abrir").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const carpeta = document.getElementById("input-carpeta").value.trim();
+      const statusEl = document.getElementById("manual-status");
+      if (!carpeta) return;
+      statusEl.textContent = "Procesando...";
+      try {
+        const resp = await fetch("/abrir_carpeta", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({carpeta}),
+        });
+        const data = await resp.json();
+        statusEl.textContent = resp.ok ? "" : ("Error: " + (data.error || "desconocido"));
+        ultimoKey = null;
+        render(data);
+      } catch (e) {
+        statusEl.textContent = "Error de red: " + e;
+      }
+    });
+
+    poll();
+    pollCola();
+    setInterval(poll, 4000);
+    setInterval(pollCola, 3000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+{
+  "recto": {
+    "umbral_verde_proba": 0.6203597213360748,
+    "umbral_verde_es_fallback": false,
+    "sens_objetivo": 0.85,
+    "sens_esp_val": {
+      "sensibilidad": 0.8888888888888888,
+      "especificidad": 0.9411764705882353
+    },
+    "delta_severidad_pp": 2.46305508646374,
+    "distribucion_margen_no_verde_val": {
+      "n": 9,
+      "min": 0.3782976082466618,
+      "median": 2.46305508646374,
+      "mean": 3.1706098310097133,
+      "std": 2.5333221791382874,
+      "max": 8.631055127957474
+    },
+    "combinacion": "max(P_fail_RV65, P_fail_RV55) para score; max(margen_RV65, margen_RV55) para severidad"
+  },
+  "vejiga": {
+    "umbral_verde_proba": 0.18420627473492857,
+    "umbral_verde_es_fallback": false,
+    "sens_objetivo": 0.9,
+    "sens_esp_val": {
+      "sensibilidad": 1.0,
+      "especificidad": 0.7894736842105263
+    },
+    "delta_severidad_pp": 2.0857953583790447,
+    "distribucion_margen_no_verde_val": {
+      "n": 11,
+      "min": -1.9048783238615012,
+      "median": 2.0857953583790447,
+      "mean": 1.79390006596978,
+      "std": 2.7685227817180738,
+      "max": 8.229800707983955
+    },
+    "combinacion": "P_fail_BV65 directo (unico constraint de vejiga)"
+  },
+  "umbrales_clinicos": {
+    "RV65": 15.0,
+    "RV55": 25.0,
+    "BV65": 15.0
+  },
+  "n_val": 26
+}
