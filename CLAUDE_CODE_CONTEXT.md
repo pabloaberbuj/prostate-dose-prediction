@@ -12,6 +12,14 @@
 > este hallazgo — si se retoma, que sea por mejora de DVH/dosis completo en el proyecto KBP,
 > no por este techo (que no existe) ni por clasificación (donde el ML clásico ya gana, ver
 > sección "Baseline ML clásico").
+>
+> **⚠️⚠️ BUG CRÍTICO DE CT — RESUELTO (2026-08):** `cargar_ct()` cargaba la serie RD (dosis)
+> en vez del CT real en TODOS los NPZ generados hasta agosto 2026 (normo + hipo). El canal CT
+> era dosis remuestreada, no anatomía. Ya está corregido + se re-decidió el FOV (recorte 34cm).
+> Las conclusiones RELATIVAS entre experimentos NO se invalidan (todos compartían el mismo CT
+> corrupto). Nueva línea base: **exp002_ctfix_fov34**. Ver sección "BUG CRÍTICO DE CT +
+> corrección de FOV" al final del documento para el detalle completo. TODO NPZ generado antes
+> del fix es obsoleto — re-preprocesar desde DICOM antes de usar.
 
 ## Rol
 
@@ -2362,3 +2370,187 @@ outlier conocido de la serie.
 `results/exp_hipo_003_finetune_v3_test_hipo_v3/` (`test_metrics.csv`, `summary.json`,
 `error_analysis.json`, `subgroup_unapproved_metrics.json`, `worst_cases.csv`,
 `best_cases.csv`, `plots/`).
+
+---
+
+## ⚠️⚠️ BUG CRÍTICO DE CT + corrección de FOV — re-fundación del pipeline (2026-08, RESUELTO)
+
+**El más grave del proyecto.** `cargar_ct()` en `data/preprocess.py` cargaba la serie RD
+(dosis) en vez del CT real, en TODOS los pacientes (normo + hipo). El "canal CT" de todos los
+NPZ generados hasta esta fecha era dosis remuestreada, NO anatomía.
+
+### Diagnóstico (confirmado, 4 verificaciones)
+- **Causa raíz:** `GetGDCMSeriesFileNames(carpeta)` sin filtro de modalidad. Cada carpeta de
+  paciente tiene CT+RD+RS+RP juntos; GDCM devolvía la serie del RD (1 archivo) en vez del CT
+  (132-153 archivos). El viejo parche del "CT lee 4D" era en realidad el RD mal leído — nunca
+  fue la CT, y se parcheó el síntoma sin ver la causa.
+- **V1:** la serie que cargaba GDCM era Modality=RTDOSE, confirmado por pydicom en 4 pacientes.
+- **V2:** el spacing del RD 4D (2.5,2.5,3.0) coincide EXACTO con `meta.spacing_mm` de todos los
+  NPZ → prueba definitiva de que el "CT" guardado era el RD.
+- **V3:** universal — 613/614 pacientes (99.8%) con >90% de vóxeles CT saturados dentro de BODY.
+- **V4:** exp002 le daba norma 1.04 al canal CT (comparable a los otros) → el modelo "intentaba"
+  usar un canal que era basura casi constante.
+
+### Qué NO se invalida
+Las conclusiones RELATIVAS entre experimentos siguen válidas: TODOS compartían el mismo CT
+corrupto, así que las comparaciones (PSDM>masks, finetune>scratch, 2.5D sin mejora, MomentLoss
+sin mejora) fueron justas. Lo que cambia es la interpretación: la señal venía del PSDM
+(geometría de estructuras), no del CT.
+
+### Fix aplicado
+`cargar_ct()` reescrito: selecciona la serie con Modality=='CT' vía `GetGDCMSeriesIDs` +
+verificación por pydicom; elimina el parche 4D; agrega aserciones fail-fast (dimensión 3D,
+rango HU plausible min<-500/max>200). `preprocess_hipo.py` importa `cargar_ct` → el fix aplica
+a ambos pipelines.
+
+### Efecto colateral — cambio de FOV (resuelto con recorte)
+El CT real es camilla-a-camilla (FOV ~500-600mm) vs el RD que casualmente estaba recortado
+cerca del PTV. Sin recorte axial, la anatomía tratada quedaba en ~20-30% del frame 256×256
+(perdía 2-3x resolución sobre OARs). Se decidió **recorte en plano de caja cuadrada fija
+centrada en centroide PTV**. Mediciones (44 pacientes) descartaron el offset anterior (el
+cuello de botella es ancho de caderas lateral, no asimetría AP).
+
+### Comparación de FOV (exp002 con CT real, test=59)
+| Métrica | FOV 50cm (1.95mm/px) | FOV 34cm (1.33mm/px) |
+|---|---|---|
+| MAE rectum | 3.95 | **3.63** |
+| rectum_D15 bias | -3.96 | **-2.42** |
+| rectum_D10 bias | -3.09 | **-1.77** |
+| PTV D95/D98/D99 MAE | 1.29/1.88/2.24 | **0.87/0.99/1.13** |
+| PTV D2 (hotspot) MAE | **0.64** | 1.19 |
+| rectum_V70 agreement | **100%** | 94.9% |
+| DVH score | 1.39 | 1.41 (neutro) |
+
+### Decisiones finales (NO reabrir)
+1. **FOV definitivo: caja 34cm, cuadrada, centrada en centroide PTV, offset 0, 256×256
+   (1.328 mm/px).** 34cm mejora predicción de OARs y cobertura de PTV (lo que importa
+   clínicamente) a costa del hotspot de PTV (D2, que no es constraint). DVH score neutro entre
+   34 y 50; se elige 34 por resolución sobre OARs.
+2. **El CT real NO mejora la performance** — confirma que el PSDM ya capturaba toda la señal
+   geométrica útil. En pelvis (tejido homogéneo, sin heterogeneidades tipo pulmón) la densidad
+   del CT aporta poco; la geometría de estructuras (PSDM) domina.
+3. **El CT real SÍ acelera la convergencia ~1.8x** (val/loss llega al piso en ~15k steps vs
+   ~27k con CT corrupto). Beneficio secundario: horizontes de entrenamiento más cortos posibles.
+4. **Nueva línea base normo: exp002_ctfix_fov34.** Los runs viejos (CT corrupto) quedan como
+   referencia histórica, NO como baseline de comparación directa.
+
+### Implicancia — exp004 (2.5D) NO se reentrenó
+Si el CT real no aporta señal ni en 2D, es muy improbable que el contexto axial de un canal sin
+señal aporte en 2.5D. exp004-ctfix queda como experimento futuro solo si un revisor lo pide.
+
+---
+
+## PRÓXIMA ETAPA — Hipofraccionado sobre pipeline corregido (re-arranque)
+
+Ver `HIPOFX_KICKOFF.md` para el detalle completo. Todo el trabajo hipo previo
+(exp_hipo_001/002/003, ML clásico, splits) se hizo con CT corrupto y FOV sin recortar → se
+rehace sobre el pipeline corregido. Paquete de trabajo:
+
+1. Re-extraer/re-preprocesar dataset hipo desde DICOM (cargar_ct corregido + FOV 34cm) →
+   carpeta nueva `processed_hipo_ctfix34/`. Descartar NPZ hipo viejos.
+2. Rehacer split estratificado (cumple/no-cumple + overlap real del C# corregido).
+3. **Rehacer ML clásico sobre el split nuevo** — OBLIGATORIO: (a) mismo split que la U-Net para
+   comparabilidad; (b) las features de overlap cambiaron con el C# corregido, y el overlap era
+   la feature dominante. Es barato (sin GPU).
+4. Fine-tuning U-Net desde **exp002_ctfix_fov34** (NO desde el exp002 viejo de CT corrupto).
+5. Evaluar: métricas completas + U-Net vs ML clásico (mismo split) + desglose por status.
+
+Decisiones abiertas heredadas (normalización D98 vs D95 en planes de mala cobertura, balance de
+clases, casos subóptimos zona gris) — ver HIPOFX_KICKOFF.md, resolver con el CSV re-extraído.
+
+---
+
+## Hipo sobre pipeline corregido — pasos 1 y 2 completados (2026-08-25)
+
+### Paso 1 (re-preprocesado) — ya estaba hecho, no documentado hasta ahora
+`processed_hipo_ctfix/` generado 2026-08-23 desde 230 candidatos
+(`data/splits/splits_hipo_ctfix_all230.json` — placeholder de preprocesado, todo en
+`train`, NO es el split real). 29 pacientes "no encontrado" en el DICOM root (fuera de
+la cohorte hipo real) + 2 fallos transitorios por `Unable to allocate ... MiB`
+(`PT_48486760d06b6f9d`, `PT_4ce363c7537c9c61` — falta de RAM momentánea, no problema de
+datos, ver `feedback_shared_vm_timing_variability`) reprocesados con
+`--only <id1> <id2>` → OK. Total 201 NPZ únicos disponibles.
+
+### D1/D2/D3 (kickoff) resueltos con `metricas_planes_hipofx_D95norm.csv` (205 filas,
+no afectado por el bug de CT — es DVH calculado por el C#)
+- **D2 (balance):** 49.5% no-cumplidores (101/204, AND estricto RV65∧RV55∧BV65
+  D95norm) — muy distinto del ~12% del dataset viejo. Muy desparejo por Status:
+  Rejected 94.7% no cumple, UnApproved 75.8%, TreatmentApproved 31.6%.
+- **D1 (normalización):** factor D95 acotado incluso en planes mal cubiertos (máx 1.59,
+  3 pacientes >1.2); factor D98 se dispara en planes sub-cubiertos (máx **4.64**, 7
+  pacientes >1.2) porque D98 es una cola sensible al ruido de cobertura. Confirma que
+  normalizar por D95 (ya lo que hace el pipeline "D95norm") es correcto — D98 borraría
+  la señal de incumplimiento.
+- **D3:** no analizado en detalle esta sesión (pendiente si hace falta para el análisis
+  de casos zona gris).
+
+### Exclusión manual — outlier `PT_5b54e7add30325f0`
+TreatmentApproved con `s_D95=1.8626` (máximo de toda la cohorte), D95 crudo=37.58 Gy y
+`dose_max=196.64 Gy` — no es cobertura real mala sino probable artefacto de extracción
+(PTV_High mal asignado o plan parcial). **Decisión de Pablo: excluir del dataset**, no
+investigar más por ahora.
+
+### Exclusión manual — `PT_a0f9d9d98bbb8c81` (⚠️ verificar)
+HIPOFX_KICKOFF.md lo documenta como plan normo colado (39fx/78Gy) a descartar, pero el
+CSV actual muestra 28fx/70Gy para este AnonID — posible que ya haya sido corregido/
+re-extraído desde que se escribió el kickoff, no verificado esta sesión. Se excluyó por
+precaución siguiendo la decisión escrita. **Pendiente: confirmar con Pablo si ya se
+puede reincorporar.**
+
+### Paso 2 (split estratificado) — `splits_hipo_ctfix_v4.json` (198 pac., 128/30/40)
+Generado con `scripts/make_splits_hipo_ctfix_v4.py` (mismo método 2D que
+`make_splits_hipo_v3_unet.py`: cumple/no-cumple x tercil `Solap_PTV_Rectum_cc`).
+201 NPZ − 1 excluido por falla de extracción (`PT_f4bd8360f920284c`, Rectum/Bladder
+ausentes en RS, ya conocido) − 2 exclusiones manuales de arriba = 198. No hicieron
+falta swaps train↔val (val salió con 15/30 no-cumplidores de entrada, sobre el mínimo
+de 5). Terciles overlap: t1=6.45cc, t2=10.65cc.
+
+| Split | n | no_cumple | TreatmentApproved | Rejected | UnApproved |
+|---|---|---|---|---|---|
+| train | 128 | 64 | 82 | 27 | 19 |
+| val | 30 | 15 | 21 | 4 | 5 |
+| test | 40 | 20 | 29 | 5 | 6 |
+
+### ⚠️ Bug encontrado en el propio paso 1 — FOV real era 50cm, no 34cm
+El preprocesado del 2026-08-23 (arriba) en realidad corrió con `INPLANE_CROP_MM=500.0`
+(confirmado en el log: "recorte de 50cm"; en meta NPZ: `crop_lado_mm: 500.0`). La
+constante en `data/preprocess.py` nunca se actualizó a 340 tras la decisión "NO
+reabrir" — normo pasaba `--crop-mm 340` explícito en su propio CLI, pero
+`preprocess_hipo.py` importaba la constante compartida directo, sin exponer override.
+**Fix:** se agregó `--crop-mm` a `preprocess_hipo.py` (default 340.0, desacoplado del
+default de `preprocess.py`/normo). NPZ de 500mm respaldados en
+`processed_hipo_ctfix_OLD_500mm_bak/` (no borrados). Re-corrido completo con
+`--crop-mm 340 --workers 3` (bajado de 6 por poca RAM libre, ver
+[[project-shared-vm-timing-variability]]) — 201 OK, mismos 29 "no encontrado", 0 OOM,
+0 errores de clipping duro de OAR/PTV (200/201 con BODY clipeado lateral, esperado a
+34cm). Split reconstruido: mismo resultado exacto (mismos 201 candidatos, mismas
+exclusiones) — `splits_hipo_ctfix_v4.json` no cambió.
+
+### Paso 3 (ML clásico) — hecho, ver [[project-hipo-ctfix-v4-split]] para detalle
+AUC test: RV65=0.968, RV55=0.853, BV65=0.969 (mejoró mucho vs la corrida vieja,
+consistente con el dataset mucho más balanceado). Evaluado sobre el test COMPLETO del
+split nuevo (mezcla de Status), no filtrado a "población natural" como hacía el
+protocolo viejo — decisión deliberada para que la comparación con la U-Net sea sobre
+el mismo test set exacto.
+
+### Paso 4 (U-Net finetune) — exp_hipo_004_finetune_ctfix_v4, LANZADO 2026-08-25
+Init desde `checkpoints/exp002_unet2d_psdm_ctfix_fov34/epoch=127.ckpt` (mejor checkpoint
+por val/mae=1.9042, confirmado via bookkeeping de ModelCheckpoint — NO el
+exp002_unet2d_psdm viejo de CT corrupto). LR=1e-5, full finetune. Horizonte escalado
+con la misma convención que exp_hipo_003 (base finetune 100/30 epochs, no el
+max_epochs=200 propio de exp002_ctfix_fov34): factor = n_train_normo (265,
+splits_v1.json) / n_train_hipo (128, splits_hipo_ctfix_v4.json) = 2.0703 →
+max_epochs=207, patience=62. Config: `configs/exp_hipo_004_finetune_ctfix_v4.yaml`.
+Corriendo en background con el `.venv` del repo (torch 2.12.1+cu130 — el miniconda
+`base` sólo tiene torch CPU, y `cnn_prostata` no tiene pytorch_lightning instalado;
+usar `.venv/Scripts/python.exe` para cualquier entrenamiento/eval de U-Net de acá en
+adelante). GPU estaba libre (0% util) antes de lanzar, RAM libre ~6.5GB (VM compartida
+consume el resto, normal).
+
+### Paso 5 (evaluación completa) — TERMINADO, ver `RESULTADO_hipo_ctfix_v4.md`
+exp_hipo_004 early-stopped en época 77/207 (mejor val/mae=1.876, época 15). Test (n=40):
+MAE body=2.552, RV65 AUC=0.909, RV55 AUC=0.833, BV65 AUC=0.982. **El ML clásico
+(LogReg, mismo split) iguala o supera a la U-Net en las 3 métricas operativas** (RV65
+AUC=0.968, RV55=0.853, BV65=0.969) — conclusión principal de esta vuelta, ver el .md
+para detalle completo y la comparación (orientativa, splits distintos) contra la
+corrida vieja de CT corrupto.

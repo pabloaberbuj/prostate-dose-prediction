@@ -53,12 +53,17 @@ from preprocess import (  # noqa: E402
     calcular_recorte_plano,
     aplicar_recorte_plano,
     INPLANE_SIZE,
-    INPLANE_CROP_MM,
     Z_MARGIN,
     CT_HU_MIN,
     CT_HU_MAX,
     OPCIONES_BODY,
 )
+
+# FOV definitivo (HIPOFX_KICKOFF.md / CLAUDE_CODE_CONTEXT.md, decision "NO reabrir"):
+# caja 34cm. NO se importa INPLANE_CROP_MM de preprocess.py (ese default sigue en 500mm
+# para normo, que lo pasa explicito via --crop-mm en sus propias corridas) -- hipo debe
+# fijar su propio default correcto aqui para no depender de ese valor compartido.
+INPLANE_CROP_MM_DEFAULT = 340.0
 
 warnings.filterwarnings("ignore", category=UserWarning)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -155,7 +160,8 @@ def buscar(estructuras: dict, opciones):
 # ─── Procesado de un paciente ─────────────────────────────────────────────────
 
 def procesar_paciente_hipo(anonid: str, carpeta_dicom: Path, output_dir: Path,
-                            status: str, nombre_ptv_csv: str = "") -> dict:
+                            status: str, nombre_ptv_csv: str = "",
+                            crop_mm: float = INPLANE_CROP_MM_DEFAULT) -> dict:
     out_path = output_dir / f"{anonid}.npz"
     if out_path.exists():
         return {'anonid': anonid, 'status': 'skipped (ya existe)'}
@@ -217,7 +223,7 @@ def procesar_paciente_hipo(anonid: str, carpeta_dicom: Path, output_dir: Path,
     #     centroide del PTV) — ver preprocess.py::procesar_paciente para el razonamiento
     #     completo. OAR/PTV clipeado -> error (revisar a mano); BODY clipeado -> warning.
     cx, cy = centroide_fisico(ptv_mask, ct_sitk)
-    half_mm = INPLANE_CROP_MM / 2.0
+    half_mm = crop_mm / 2.0
 
     clip_oar = {}
     for nombre, mascara in [('PTV', ptv_mask), ('Rectum', rectum_mask), ('Bladder', bladder_mask)]:
@@ -227,7 +233,7 @@ def procesar_paciente_hipo(anonid: str, carpeta_dicom: Path, output_dir: Path,
             clip_oar[nombre] = excedente
     if clip_oar:
         raise ValueError(
-            f"{anonid}: recorte de {INPLANE_CROP_MM/10:.0f}cm corta OAR/PTV — revisar caso "
+            f"{anonid}: recorte de {crop_mm/10:.0f}cm corta OAR/PTV — revisar caso "
             f"a mano (excedentes mm: {clip_oar})"
         )
 
@@ -236,11 +242,11 @@ def procesar_paciente_hipo(anonid: str, carpeta_dicom: Path, output_dir: Path,
     if clip_body:
         log.warning(
             f"{anonid}: BODY lateral clipeado {clip_body} mm por el recorte de "
-            f"{INPLANE_CROP_MM/10:.0f}cm, sin afectar OARs/PTV — impacto esperado en piel/grasa "
+            f"{crop_mm/10:.0f}cm, sin afectar OARs/PTV — impacto esperado en piel/grasa "
             f"de zona de dosis baja"
         )
 
-    rec = calcular_recorte_plano(ct_sitk, cx, cy, INPLANE_CROP_MM)
+    rec = calcular_recorte_plano(ct_sitk, cx, cy, crop_mm)
     ct_norm        = aplicar_recorte_plano(ct_norm,        rec, fill_value=-1.0)
     dosis_norm_pct = aplicar_recorte_plano(dosis_norm_pct, rec, fill_value=0.0)
     ptv_mask       = aplicar_recorte_plano(ptv_mask,       rec, fill_value=0)
@@ -284,8 +290,8 @@ def procesar_paciente_hipo(anonid: str, carpeta_dicom: Path, output_dir: Path,
     meta = {
         'anonid':          anonid,
         'spacing_mm':      list(spacing_mm),  # spacing NATIVO — no confundir con el efectivo del array
-        'effective_inplane_spacing_mm': INPLANE_CROP_MM / INPLANE_SIZE,  # fijo: 1.953mm/px
-        'crop_lado_mm':        INPLANE_CROP_MM,
+        'effective_inplane_spacing_mm': crop_mm / INPLANE_SIZE,
+        'crop_lado_mm':        crop_mm,
         'centroide_ptv_xy_mm': [round(cx, 2), round(cy, 2)],
         'body_clip_mm':        clip_body,
         'z_range':         list(z_range),
@@ -335,10 +341,11 @@ def procesar_paciente_hipo(anonid: str, carpeta_dicom: Path, output_dir: Path,
 # ─── Worker para multiprocessing ─────────────────────────────────────────────
 
 def _worker(args):
-    anonid, root_primario, root_fallback, output_dir, status, nombre_ptv_csv = args
+    anonid, root_primario, root_fallback, output_dir, status, nombre_ptv_csv, crop_mm = args
     try:
         carpeta = resolver_carpeta(anonid, Path(root_primario), Path(root_fallback))
-        return procesar_paciente_hipo(anonid, carpeta, Path(output_dir), status, nombre_ptv_csv)
+        return procesar_paciente_hipo(anonid, carpeta, Path(output_dir), status, nombre_ptv_csv,
+                                       crop_mm=crop_mm)
     except Exception as e:
         return {'anonid': anonid, 'status': f'ERROR: {e}'}
 
@@ -354,6 +361,10 @@ def main():
     parser.add_argument("--splits", required=True, help="JSON con splits train/val/test hipo")
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--only", nargs="+", help="Procesar solo estos AnonIDs")
+    parser.add_argument("--crop-mm", type=float, default=INPLANE_CROP_MM_DEFAULT,
+                         help=f"Lado de la caja de recorte en el plano, centrada en el "
+                              f"centroide del PTV (default {INPLANE_CROP_MM_DEFAULT:.0f}mm, "
+                              f"FOV definitivo decidido en HIPOFX_KICKOFF.md)")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -374,11 +385,13 @@ def main():
     log.info(f"Total a procesar: {len(anonids)} pacientes")
     log.info(f"Output: {output_dir}")
     log.info(f"Workers: {args.workers}")
+    log.info(f"Crop en el plano: {args.crop_mm:.0f}mm ({args.crop_mm/10:.1f}cm)")
 
     worker_args = [
         (a, args.dicom_root_primario, args.dicom_root_fallback, args.output_dir,
          filas_csv.get(a, {}).get('Status', ''),
-         filas_csv.get(a, {}).get('NombrePTV', ''))
+         filas_csv.get(a, {}).get('NombrePTV', ''),
+         args.crop_mm)
         for a in anonids
     ]
 

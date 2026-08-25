@@ -1,0 +1,92 @@
+{
+  "version_features": "p1_v1_7geometricas",
+  "feature_cols_orden": [
+    "VolRectum_cc",
+    "VolBladder_cc",
+    "VolPTV_cc",
+    "Solap_PTV_Rectum_cc",
+    "Solap_PTV_Bladder_cc",
+    "overlap_rel_recto",
+    "overlap_rel_vejiga"
+  ],
+  "constraints": [
+    "RV65",
+    "RV55",
+    "BV65"
+  ],
+  "modelo_desplegado_clasificacion": "logreg (StandardScaler + LogisticRegression, class_weight=balanced)",
+  "modelo_control_clasificacion": "HistGradientBoostingClassifier (no se despliega, solo referencia)",
+  "modelo_regresion_severidad": {
+    "RV65": "ridge",
+    "RV55": "ridge",
+    "BV65": "ridge"
+  },
+  "archivos": {
+    "RV65": {
+      "clasificacion": "clf_RV65.joblib",
+      "regresion": "reg_RV65.joblib",
+      "modelo_regresion": "ridge"
+    },
+    "RV55": {
+      "clasificacion": "clf_RV55.joblib",
+      "regresion": "reg_RV55.joblib",
+      "modelo_regresion": "ridge"
+    },
+    "BV65": {
+      "clasificacion": "clf_BV65.joblib",
+      "regresion": "reg_BV65.joblib",
+      "modelo_regresion": "ridge"
+    }
+  },
+  "thresholds_file": "thresholds_cv.json",
+  "calibracion_protocolo": "CV (calibrate_p1_cv.py) -- variantes A (prob) y B (margen) reportadas, ninguna descartada",
+  "dataset_csv": "dataset_p1_ctfix.csv",
+  "splits_file": "splits_hipo_ctfix_v4.json",
+  "splits_metadata": {
+    "excluidos_falla_extraccion": [
+      "PT_f4bd8360f920284c"
+    ],
+    "excluidos_manual": {
+      "PT_5b54e7add30325f0": "Outlier extremo de normalizacion: s_D95=1.8626 (max de toda la cohorte), D95 crudo=37.58 Gy con dose_max=196.64 Gy -- no parece cobertura real mala sino probable artefacto de extraccion (PTV_High mal asignado o plan parcial). Excluido por decision de Pablo, 2026-08-25.",
+      "PT_a0f9d9d98bbb8c81": "HIPOFX_KICKOFF.md documenta este AnonID como plan normo colado (39fx/78Gy) a descartar. El CSV actual muestra 28fx/70Gy para este AnonID -- posible que ya haya sido corregido/re-extraido, no verificado. Excluido por precaucion siguiendo la decision escrita; CONFIRMAR con Pablo si ya se puede reincorporar."
+    },
+    "excluidos_sin_npz": [],
+    "proposito": "U-Net dose prediction, dataset hipo sobre pipeline CT corregido (cargar_ct fix + FOV 34cm). Ver HIPOFX_KICKOFF.md paso 2. NO confundir con splits_hipo_v3_unet.json (CT corrupto, obsoleto) ni con splits_hipo_ctfix_all230.json (placeholder de preprocesado).",
+    "estratificacion": "2D: cumple/no-cumple (AND estricto RV65,RV55,BV65 D95norm) x tercil overlap PTV-Recto (Solap_PTV_Rectum_cc, real)",
+    "terciles_overlap_cc": [
+      6.449,
+      10.649
+    ],
+    "celdas_2d": {
+      "no_cumple__overlap_medio": 35,
+      "cumple__overlap_medio": 31,
+      "cumple__overlap_bajo": 53,
+      "no_cumple__overlap_alto": 51,
+      "no_cumple__overlap_bajo": 13,
+      "cumple__overlap_alto": 15
+    },
+    "fracciones": {
+      "train": 0.65,
+      "val": 0.15,
+      "test": 0.2
+    },
+    "random_state": 42,
+    "n_total": 198,
+    "n_train": 128,
+    "n_val": 30,
+    "n_test": 40,
+    "min_no_cumple_val_target": 5,
+    "swaps_train_val": [],
+    "ambiguos_resueltos_via_npz": [
+      "PT_70368fdeed2777a4",
+      "PT_8b1aa3d35e1b468b"
+    ],
+    "dataset_source": "C:\\Pablo\\ProstateDoseProject\\repo\\data\\metricas_planes_hipofx_D95norm.csv",
+    "processed_dir": "C:\\Pablo\\ProstateDoseProject\\processed_hipo_ctfix"
+  },
+  "fecha_generacion": "2026-08-25",
+  "notas": [
+    "Rerun de Proyecto 1 (ver scripts/prep_data_p1_ctfix.py y scripts/run_p1_ctfix_pipeline.py) sobre splits_hipo_ctfix_v4.json, para comparacion apples-to-apples con U-Net (HIPOFX_KICKOFF.md). No modifica scripts/proyecto1_v3* originales.",
+    "A diferencia de splits_hipo_v3.json, este split mezcla UnApproved en las 3 particiones (no lo enruta entero a train) -- ver docstring de run_p1_ctfix_pipeline.py para el detalle de como eso afecta el pool de calibracion CV y la evaluacion en test."
+  ]
+}

@@ -1,0 +1,257 @@
+{
+  "n_test": 40,
+  "n_bootstrap": 1000,
+  "bootstrap_seed": 42,
+  "thresholds_file": "thresholds_cv.json",
+  "por_constraint": {
+    "RV65": {
+      "auc": 0.968,
+      "auc_ci95": [
+        0.9130244088482076,
+        1.0
+      ],
+      "n_test": 40,
+      "n_positivos_test": 15
+    },
+    "RV55": {
+      "auc": 0.8533333333333333,
+      "auc_ci95": [
+        0.7109644418777329,
+        0.9592664576802507
+      ],
+      "n_test": 40,
+      "n_positivos_test": 10
+    },
+    "BV65": {
+      "auc": 0.9686609686609686,
+      "auc_ci95": [
+        0.907886429028133,
+        1.0
+      ],
+      "n_test": 40,
+      "n_positivos_test": 13
+    }
+  },
+  "por_oar": {
+    "recto": {
+      "sens_objetivo": 0.95,
+      "variante_activa": "A",
+      "variant_A_prob": {
+        "umbral_mediana_cv": 0.23583404320789764,
+        "umbral_iqr_cv": [
+          0.1391168391804962,
+          0.4609336968267886
+        ],
+        "umbral_bootstrap_ci95": [
+          0.16720910652471266,
+          0.35647275601345835
+        ],
+        "auc": 0.9616368286445013,
+        "auc_ci95": [
+          0.9022556390977444,
+          0.9999999999999999
+        ],
+        "sens_esp_test": {
+          "TP": 17,
+          "FP": 5,
+          "TN": 18,
+          "FN": 0,
+          "sensibilidad": 1.0,
+          "especificidad": 0.782608695652174,
+          "PPV": 0.7727272727272727,
+          "NPV": 1.0,
+          "prevalencia": 0.425,
+          "sensibilidad_ci95": [
+            1.0,
+            1.0
+          ],
+          "especificidad_ci95": [
+            0.6,
+            0.9444444444444444
+          ]
+        },
+        "delta_severidad_pp": 1.993020589049813,
+        "zona_counts": {
+          "verde": 18,
+          "naranja": 12,
+          "rojo": 10
+        },
+        "zona_vs_real": {
+          "cumple": {
+            "naranja": 5,
+            "rojo": 0,
+            "verde": 18
+          },
+          "falla": {
+            "naranja": 7,
+            "rojo": 10,
+            "verde": 0
+          }
+        }
+      },
+      "variant_B_margen": {
+        "umbral_mediana_cv": -0.7347481781139358,
+        "umbral_iqr_cv": [
+          -1.5345975694093692,
+          -0.5093736926732397
+        ],
+        "umbral_bootstrap_ci95": [
+          -1.8771961340598438,
+          0.15004694099490123
+        ],
+        "auc": 0.9616368286445013,
+        "auc_ci95": [
+          0.8996691048415185,
+          1.0
+        ],
+        "sens_esp_test": {
+          "TP": 15,
+          "FP": 2,
+          "TN": 21,
+          "FN": 2,
+          "sensibilidad": 0.8823529411764706,
+          "especificidad": 0.9130434782608695,
+          "PPV": 0.8823529411764706,
+          "NPV": 0.9130434782608695,
+          "prevalencia": 0.425,
+          "sensibilidad_ci95": [
+            0.7142857142857143,
+            1.0
+          ],
+          "especificidad_ci95": [
+            0.7856366459627329,
+            1.0
+          ]
+        },
+        "delta_severidad_pp": 2.469416199963156,
+        "zona_counts": {
+          "verde": 23,
+          "naranja": 8,
+          "rojo": 9
+        },
+        "zona_vs_real": {
+          "cumple": {
+            "naranja": 2,
+            "rojo": 0,
+            "verde": 21
+          },
+          "falla": {
+            "naranja": 6,
+            "rojo": 9,
+            "verde": 2
+          }
+        }
+      }
+    },
+    "vejiga": {
+      "sens_objetivo": 0.9,
+      "variante_activa": "A",
+      "variant_A_prob": {
+        "umbral_mediana_cv": 0.46039748160140775,
+        "umbral_iqr_cv": [
+          0.22737129838915607,
+          0.5721166391230987
+        ],
+        "umbral_bootstrap_ci95": [
+          0.23262533517502737,
+          0.7283462302836434
+        ],
+        "auc": 0.9686609686609686,
+        "auc_ci95": [
+          0.899970238095238,
+          1.0
+        ],
+        "sens_esp_test": {
+          "TP": 11,
+          "FP": 2,
+          "TN": 25,
+          "FN": 2,
+          "sensibilidad": 0.8461538461538461,
+          "especificidad": 0.9259259259259259,
+          "PPV": 0.8461538461538461,
+          "NPV": 0.9259259259259259,
+          "prevalencia": 0.325,
+          "sensibilidad_ci95": [
+            0.6153846153846154,
+            1.0
+          ],
+          "especificidad_ci95": [
+            0.8147569444444444,
+            1.0
+          ]
+        },
+        "delta_severidad_pp": 1.485185987968471,
+        "zona_counts": {
+          "verde": 27,
+          "naranja": 5,
+          "rojo": 8
+        },
+        "zona_vs_real": {
+          "cumple": {
+            "naranja": 2,
+            "rojo": 0,
+            "verde": 25
+          },
+          "falla": {
+            "naranja": 3,
+            "rojo": 8,
+            "verde": 2
+          }
+        }
+      },
+      "variant_B_margen": {
+        "umbral_mediana_cv": -0.4704726109785362,
+        "umbral_iqr_cv": [
+          -2.223411988008495,
+          -0.4021266023479555
+        ],
+        "umbral_bootstrap_ci95": [
+          -4.003242784923058,
+          0.6372582205343154
+        ],
+        "auc": 0.9658119658119657,
+        "auc_ci95": [
+          0.9059822361546499,
+          1.0
+        ],
+        "sens_esp_test": {
+          "TP": 11,
+          "FP": 2,
+          "TN": 25,
+          "FN": 2,
+          "sensibilidad": 0.8461538461538461,
+          "especificidad": 0.9259259259259259,
+          "PPV": 0.8461538461538461,
+          "NPV": 0.9259259259259259,
+          "prevalencia": 0.325,
+          "sensibilidad_ci95": [
+            0.6,
+            1.0
+          ],
+          "especificidad_ci95": [
+            0.8148148148148148,
+            1.0
+          ]
+        },
+        "delta_severidad_pp": 2.1967646595430885,
+        "zona_counts": {
+          "verde": 27,
+          "naranja": 7,
+          "rojo": 6
+        },
+        "zona_vs_real": {
+          "cumple": {
+            "naranja": 2,
+            "rojo": 0,
+            "verde": 25
+          },
+          "falla": {
+            "naranja": 5,
+            "rojo": 6,
+            "verde": 2
+          }
+        }
+      }
+    }
+  }
+}

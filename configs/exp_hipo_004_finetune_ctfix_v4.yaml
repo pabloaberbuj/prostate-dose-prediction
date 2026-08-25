@@ -1,0 +1,149 @@
+# ============================================================
+# Experimento hipo 004 — fine-tuning desde exp002_ctfix_fov34 (normo, PIPELINE
+# CT CORREGIDO), DATASET ctfix v4 (198 pac., FOV 34cm, split splits_hipo_ctfix_v4.json)
+# ============================================================
+# Reemplaza a exp_hipo_003_finetune_v3 (ese usaba processed_hipo/ con el bug de CT +
+# FOV 50cm, ver CLAUDE_CODE_CONTEXT.md "BUG CRITICO DE CT"). Copia de
+# exp_hipo_003_finetune_v3.yaml — arquitectura, inputs, loss, optimizador,
+# batch/augmentation, constraints hipo IDENTICOS. Cambios reales:
+#
+#   - data.processed_dir / splits_file -> dataset ctfix v4 (34cm, 198 pac., 128/30/40).
+#   - Init: TODOS los pesos de
+#     checkpoints/exp002_unet2d_psdm_ctfix_fov34/epoch=127.ckpt (mejor checkpoint,
+#     val/mae=1.9042 segun bookkeeping de ModelCheckpoint) via --init-weights (solo
+#     state_dict). NO usar exp002_unet2d_psdm/epoch=191.ckpt (ese es el normo VIEJO,
+#     CT corrupto).
+#   - LR = 1e-5 (igual criterio que 003: LR_exp002_ctfix_fov34 (1e-4) / 10, full
+#     finetune sin freezing).
+#   - Horizonte escalado, misma convencion que 003 (base finetune 100/30, NO el
+#     max_epochs=200 propio de exp002_ctfix_fov34 que es un run desde cero):
+#       factor = n_train_normo (splits_v1.json, 265) / n_train_hipo (splits_hipo_ctfix_v4.json, 128)
+#              = 2.0703
+#       max_epochs = round(100 * 2.0703) = 207
+#       patience   = round(30  * 2.0703) = 62
+#     (El CT real acelera convergencia ~1.8x segun exp002_ctfix_fov34 vs exp002 viejo,
+#     asi que en la practica el early stopping deberia cortar bastante antes de 207 —
+#     no se achica el techo a priori, HIPOFX_KICKOFF.md solo pide aprovechar la
+#     convergencia mas rapida, no bajar el limite manualmente.)
+#
+# Ver HIPOFX_KICKOFF.md / CLAUDE_CODE_CONTEXT.md seccion "Hipo sobre pipeline
+# corregido — pasos 1 y 2 completados (2026-08-25)".
+# ============================================================
+
+experiment:
+  name: exp_hipo_004_finetune_ctfix_v4
+  description: "Fine-tuning hipofraccionado dataset ctfix v4 (198 pac, FOV 34cm, pipeline CT corregido) desde exp002_ctfix_fov34 (normo, CT corregido): full finetune, LR=1e-5, horizonte escalado x2.0703 (207 epochs)"
+  seed: 42
+
+# ----------------------- Datos -----------------------
+data:
+  processed_dir: "C:/Pablo/ProstateDoseProject/processed_hipo_ctfix"
+  splits_file: "data/splits/splits_hipo_ctfix_v4.json"
+  fold: 0
+
+  inputs:
+    use_ct: true
+    use_body_mask: true
+    use_ptv_mask: false           # reemplazado por PSDM
+    use_bladder_mask: false       # reemplazado por PSDM
+    use_rectum_mask: false        # reemplazado por PSDM
+    use_psdm: true                # CT + BODY + PSDM_PTV + PSDM_Rectum + PSDM_Bladder
+    use_psdm_normalize_cm: 15.0
+
+  z_margin_slices: 5
+  inplane_size: 256
+
+  batch_size: 1
+  num_workers: 0
+  pin_memory: false
+
+  cache_train: false
+  cache_val: false
+
+# --------------------- Augmentation ---------------------
+augmentation:
+  flip_lr_prob: 0.5
+  rotation_degrees: 0
+  intensity_jitter_hu: 50
+
+# ----------------------- Modelo -----------------------
+model:
+  arch: "unet2d"
+  in_channels: 5             # CT + BODY + PSDM_PTV + PSDM_Rectum + PSDM_Bladder
+  out_channels: 1
+  base_features: 16
+  depth: 4
+  upsample_mode: "bilinear"
+  dropout: 0.0
+  context_slices: 3
+
+# ----------------------- Loss -----------------------
+loss:
+  mae_weight: 1.0
+  use_moment_loss: false
+  moment_weight: 0.01
+  moment_structures:
+    ptv: [1, 2, 10]
+    bladder: [1, 2, 10]
+    rectum: [1, 2, 10]
+
+# --------------------- Optimizer ---------------------
+optimizer:
+  name: "adamw"
+  lr: 1.0e-5           # LR_exp002_ctfix_fov34 (1e-4) / 10 — full finetune sin destruir el prior de PTV
+  weight_decay: 1.0e-5
+
+scheduler:
+  name: "cosine"
+  warmup_epochs: 5   # nota: no está conectado en configure_optimizers() (dead config, ver lightning_module.py)
+  max_epochs: 207     # horizonte REAL de este run — self-consistente. Escalado desde el
+                      # horizonte finetune de 002/002b/003 (100) por factor=265/128=2.0703.
+
+# --------------------- Training ---------------------
+training:
+  max_epochs: 207
+  precision: "16-mixed"
+  accumulate_grad_batches: 1
+  gradient_clip_val: 1.0
+  early_stopping_patience: 62   # escalado desde 30 por el mismo factor 2.0703
+  monitor_metric: "val/mae"
+  monitor_mode: "min"
+
+# --------------------- Logging ---------------------
+logging:
+  wandb_project: "prostate-dose-prediction"
+  wandb_entity: null
+  log_dvh_every_n_epochs: 5
+  log_visual_every_n_epochs: 10
+  num_visual_samples: 3
+  tags:
+    - "dataset:hipo_ctfix_v4"
+    - "arch:unet2d"
+    - "inputs:psdm"
+    - "init:normo_exp002_ctfix_fov34"
+    - "ctfix:true"
+    - "fov:34cm"
+
+# --------------------- Constraints clínicos (hipofraccionado) ---------------------
+# Protocolo: 70 Gy / 28 fx (2.5 Gy/fx). Constraints operativos con señal suficiente
+# (ver D5 heredado, CLAUDE_CODE_CONTEXT.md): Rectum V65<15 / V55<25, Bladder V65<15.
+# V45 (ambos OAR) y Dmean son de solo registro, no clasificación — ver evaluate_hipo.py,
+# que además calibra el punto de operación en val, congelado, y no usa este bloque
+# directamente (constraints hardcoded ahí para trazabilidad del criterio).
+constraints:
+  prescription_dose_gy: 70.0
+  num_fractions: 28
+  ptv:
+    d95_target_pct: 100.0
+  rectum:
+    v70_max_pct: null
+    v65_max_pct: 15.0
+    v55_max_pct: 25.0
+    v45_max_pct: 45.0
+    dmean_max_gy: 40.0   # solo registro
+  bladder:
+    v70_max_pct: null
+    v65_max_pct: 15.0
+    v55_max_pct: 25.0
+    v45_max_pct: 45.0
+    dmean_max_gy: 40.0   # solo registro

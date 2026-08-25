@@ -1,0 +1,144 @@
+{
+  "recto": {
+    "sens_objetivo": 0.95,
+    "variant_A_prob": {
+      "umbrales_por_fold": [
+        0.4609336968267886,
+        0.23583404320789764,
+        0.1391168391804962,
+        0.08083918132293695,
+        0.50071773363521
+      ],
+      "mediana": 0.23583404320789764,
+      "min": 0.08083918132293695,
+      "max": 0.50071773363521,
+      "iqr": [
+        0.1391168391804962,
+        0.4609336968267886
+      ],
+      "umbral_bootstrap_ci95": [
+        0.16720910652471266,
+        0.35647275601345835
+      ],
+      "delta_severidad_pp": 1.993020589049813,
+      "distribucion_margen_no_verde_pool": {
+        "n": 69,
+        "min": -1.893691233109994,
+        "median": 1.993020589049813,
+        "mean": 2.2651572987965505,
+        "std": 2.9548929875966756,
+        "max": 11.674306882262247
+      },
+      "n_no_verde_pool": 69
+    },
+    "variant_B_margen": {
+      "umbrales_por_fold": [
+        0.29182677213140806,
+        -1.5345975694093692,
+        -1.952336339680361,
+        -0.5093736926732397,
+        -0.7347481781139358
+      ],
+      "mediana": -0.7347481781139358,
+      "min": -1.952336339680361,
+      "max": 0.29182677213140806,
+      "iqr": [
+        -1.5345975694093692,
+        -0.5093736926732397
+      ],
+      "umbral_bootstrap_ci95": [
+        -1.8771961340598438,
+        0.15004694099490123
+      ],
+      "delta_severidad_pp": 2.469416199963156,
+      "distribucion_margen_no_verde_pool": {
+        "n": 57,
+        "min": -0.478072864654008,
+        "median": 2.469416199963156,
+        "mean": 3.0327116965697876,
+        "std": 2.676600411546393,
+        "max": 11.674306882262247
+      },
+      "n_no_verde_pool": 57
+    },
+    "variante_activa": "A",
+    "nota_variante_activa": "A = status quo (igual que v3). B queda calibrada y reportada para comparar (spec: 'no elegir la ganadora mirando test') — decision de cambiar a B pendiente de Pablo/Claude.ai con el IC en mano."
+  },
+  "vejiga": {
+    "sens_objetivo": 0.9,
+    "variant_A_prob": {
+      "umbrales_por_fold": [
+        0.21398017781809694,
+        0.22737129838915607,
+        0.5721166391230987,
+        0.7503852085354803,
+        0.46039748160140775
+      ],
+      "mediana": 0.46039748160140775,
+      "min": 0.21398017781809694,
+      "max": 0.7503852085354803,
+      "iqr": [
+        0.22737129838915607,
+        0.5721166391230987
+      ],
+      "umbral_bootstrap_ci95": [
+        0.23262533517502737,
+        0.7283462302836434
+      ],
+      "delta_severidad_pp": 1.485185987968471,
+      "distribucion_margen_no_verde_pool": {
+        "n": 38,
+        "min": -1.0882717029543887,
+        "median": 1.485185987968471,
+        "mean": 1.7317719081497918,
+        "std": 2.0021861509262715,
+        "max": 6.853132851440321
+      },
+      "n_no_verde_pool": 38
+    },
+    "variant_B_margen": {
+      "umbrales_por_fold": [
+        -3.924429028775968,
+        -2.223411988008495,
+        -0.4704726109785362,
+        0.2760751773454704,
+        -0.4021266023479555
+      ],
+      "mediana": -0.4704726109785362,
+      "min": -3.924429028775968,
+      "max": 0.2760751773454704,
+      "iqr": [
+        -2.223411988008495,
+        -0.4021266023479555
+      ],
+      "umbral_bootstrap_ci95": [
+        -4.003242784923058,
+        0.6372582205343154
+      ],
+      "delta_severidad_pp": 2.1967646595430885,
+      "distribucion_margen_no_verde_pool": {
+        "n": 34,
+        "min": -0.3780032576883716,
+        "median": 2.1967646595430885,
+        "mean": 2.073419611039271,
+        "std": 1.8548990225589075,
+        "max": 6.853132851440321
+      },
+      "n_no_verde_pool": 34
+    },
+    "variante_activa": "A",
+    "nota_variante_activa": "A = status quo (igual que v3). B queda calibrada y reportada para comparar (spec: 'no elegir la ganadora mirando test') — decision de cambiar a B pendiente de Pablo/Claude.ai con el IC en mano."
+  },
+  "umbrales_clinicos": {
+    "RV65": 15.0,
+    "RV55": 25.0,
+    "BV65": 15.0
+  },
+  "pool_calibracion": {
+    "n": 134,
+    "criterio": "natural (Approved+Rejected) de train+val agrupados, UnApproved excluido",
+    "n_folds": 5,
+    "seed": 42,
+    "n_bootstrap": 1000
+  }
+}
