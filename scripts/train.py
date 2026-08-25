@@ -154,14 +154,15 @@ def main():
         log_every_n_steps=10,
     )
 
-    if args.resume is not None:
-        # PyTorch 2.6+ cambió weights_only=True por default, rompiendo el resume de
-        # checkpoints que incluyen OmegaConf DictConfig (mismo fix que evaluate.py).
-        _orig_torch_load = torch.load
-        def _load_no_weights_only(*a, **kw):
-            kw['weights_only'] = False
-            return _orig_torch_load(*a, **kw)
-        torch.load = _load_no_weights_only
+    # PyTorch 2.6+ cambió weights_only=True por default, rompiendo la carga de
+    # checkpoints que incluyen OmegaConf DictConfig (mismo fix que evaluate.py). Afecta
+    # tanto a --resume como al trainer.test(ckpt_path="best") de abajo (ambos restauran
+    # un checkpoint), así que el parche va sin condicionar a --resume.
+    _orig_torch_load = torch.load
+    def _load_no_weights_only(*a, **kw):
+        kw['weights_only'] = False
+        return _orig_torch_load(*a, **kw)
+    torch.load = _load_no_weights_only
 
     trainer.fit(model, datamodule=datamodule, ckpt_path=args.resume)
 

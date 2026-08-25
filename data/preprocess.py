@@ -418,7 +418,8 @@ def recortar_axial(arrays: dict, margen: int = Z_MARGIN) -> dict:
 
 # ─── Procesado de un paciente ─────────────────────────────────────────────────
 
-def procesar_paciente(anonid: str, carpeta_dicom: Path, output_dir: Path) -> dict:
+def procesar_paciente(anonid: str, carpeta_dicom: Path, output_dir: Path,
+                       crop_mm: float = INPLANE_CROP_MM) -> dict:
     """
     Pipeline completo para un paciente. Devuelve dict con métricas de QC.
     Lanza excepción si algo falla.
@@ -479,13 +480,13 @@ def procesar_paciente(anonid: str, carpeta_dicom: Path, output_dir: Path) -> dic
 
     spacing_mm = ct_sitk.GetSpacing()  # (sx, sy, sz) en mm
 
-    # 7. Recorte en el plano: caja cuadrada de INPLANE_CROP_MM centrada en el centroide del
+    # 7. Recorte en el plano: caja cuadrada de crop_mm centrada en el centroide del
     #    PTV. PTV/Rectum/Bladder deben entrar siempre completos (medido sobre 44 pacientes,
     #    2026-08-23) — si no, es un caso anómalo y se aborta el paciente para revisión manual
     #    en vez de guardar una máscara de OAR/PTV truncada en silencio. BODY sí puede clipear
     #    en lateral (esperado en pacientes anchos) — eso queda como warning, no error.
     cx, cy = centroide_fisico(ptv_mask, ct_sitk)
-    half_mm = INPLANE_CROP_MM / 2.0
+    half_mm = crop_mm / 2.0
 
     clip_oar = {}
     for nombre, mascara in [('PTV', ptv_mask), ('Rectum', rectum_mask), ('Bladder', bladder_mask)]:
@@ -495,7 +496,7 @@ def procesar_paciente(anonid: str, carpeta_dicom: Path, output_dir: Path) -> dic
             clip_oar[nombre] = excedente
     if clip_oar:
         raise ValueError(
-            f"{anonid}: recorte de {INPLANE_CROP_MM/10:.0f}cm corta OAR/PTV — revisar caso "
+            f"{anonid}: recorte de {crop_mm/10:.0f}cm corta OAR/PTV — revisar caso "
             f"a mano (excedentes mm: {clip_oar})"
         )
 
@@ -504,11 +505,11 @@ def procesar_paciente(anonid: str, carpeta_dicom: Path, output_dir: Path) -> dic
     if clip_body:
         log.warning(
             f"{anonid}: BODY lateral clipeado {clip_body} mm por el recorte de "
-            f"{INPLANE_CROP_MM/10:.0f}cm, sin afectar OARs/PTV — impacto esperado en piel/grasa "
+            f"{crop_mm/10:.0f}cm, sin afectar OARs/PTV — impacto esperado en piel/grasa "
             f"de zona de dosis baja"
         )
 
-    rec = calcular_recorte_plano(ct_sitk, cx, cy, INPLANE_CROP_MM)
+    rec = calcular_recorte_plano(ct_sitk, cx, cy, crop_mm)
     ct_norm        = aplicar_recorte_plano(ct_norm,        rec, fill_value=-1.0)
     dosis_norm_pct = aplicar_recorte_plano(dosis_norm_pct, rec, fill_value=0.0)
     ptv_mask       = aplicar_recorte_plano(ptv_mask,       rec, fill_value=0)
@@ -556,8 +557,8 @@ def procesar_paciente(anonid: str, carpeta_dicom: Path, output_dir: Path) -> dic
         'anonid':         anonid,
         'spacing_mm':     list(spacing_mm),          # spacing NATIVO (sx, sy, sz) — no confundir
                                                        # con el spacing efectivo del array guardado
-        'effective_inplane_spacing_mm': INPLANE_CROP_MM / INPLANE_SIZE,  # fijo: 1.953mm/px
-        'crop_lado_mm':        INPLANE_CROP_MM,
+        'effective_inplane_spacing_mm': crop_mm / INPLANE_SIZE,
+        'crop_lado_mm':        crop_mm,
         'centroide_ptv_xy_mm': [round(cx, 2), round(cy, 2)],
         'body_clip_mm':        clip_body,
         'z_range':        list(z_range),
@@ -598,10 +599,10 @@ def procesar_paciente(anonid: str, carpeta_dicom: Path, output_dir: Path) -> dic
 # ─── Worker para multiprocessing ─────────────────────────────────────────────
 
 def _worker(args):
-    anonid, dicom_root, output_dir = args
+    anonid, dicom_root, output_dir, crop_mm = args
     carpeta = Path(dicom_root) / anonid
     try:
-        return procesar_paciente(anonid, carpeta, Path(output_dir))
+        return procesar_paciente(anonid, carpeta, Path(output_dir), crop_mm=crop_mm)
     except Exception as e:
         return {'anonid': anonid, 'status': f'ERROR: {e}'}
 
@@ -615,6 +616,9 @@ def main():
     parser.add_argument("--splits",      required=True, help="JSON con splits train/val/test")
     parser.add_argument("--workers",     type=int, default=1, help="Número de procesos paralelos")
     parser.add_argument("--only",        nargs="+",     help="Procesar solo estos AnonIDs")
+    parser.add_argument("--crop-mm",     type=float, default=INPLANE_CROP_MM,
+                        help=f"Lado (mm) de la caja de recorte en el plano, centrada en el "
+                             f"centroide del PTV (default {INPLANE_CROP_MM:.0f}mm)")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -635,8 +639,9 @@ def main():
     log.info(f"Total a procesar: {len(anonids)} pacientes")
     log.info(f"Output: {output_dir}")
     log.info(f"Workers: {args.workers}")
+    log.info(f"Crop en el plano: {args.crop_mm:.0f}mm ({args.crop_mm/10:.1f}cm)")
 
-    worker_args = [(a, args.dicom_root, args.output_dir) for a in anonids]
+    worker_args = [(a, args.dicom_root, args.output_dir, args.crop_mm) for a in anonids]
 
     resultados = []
     if args.workers == 1:

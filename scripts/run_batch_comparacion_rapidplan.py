@@ -47,18 +47,25 @@ from dvh_curva_completa import D_BINS, IDX_BAJA, IDX_MEDIA, IDX_ALTA  # noqa: E4
 # (exp_hipo_002b_finetune_clean) -- este batch es sobre el test set NORMO
 # (splits_v1.json, Rx=78Gy), asi que hay que forzar el checkpoint/config/
 # processed_dir de exp002 explicitamente, no heredar esos defaults.
-CHECKPOINT = _REPO_ROOT / "checkpoints/exp002_unet2d_psdm/epoch=191.ckpt"
-CONFIG_YAML = _REPO_ROOT / "configs/exp002_unet2d_psdm.yaml"
-PROCESSED_DIR = Path("C:/Pablo/ProstateDoseProject/processed")
+# Defaults -- exp002 "viejo" (pre CT-fix). Al 2026-08-24 ese checkpoint/processed_dir
+# YA NO EXISTEN en disco (ver project_ct_channel_corrupted_wrong_series /
+# project_ctfix_fov_resolution_change en memoria): se re-preprocesa todo el
+# dataset normo bajo processed_ctfix_34/ y se re-entrena exp002_unet2d_psdm_ctfix_fov34
+# (en progreso). Pasar --checkpoint/--config explicitos apuntando a esa corrida
+# nueva una vez que termine -- no asumir que estos defaults siguen sirviendo.
+CHECKPOINT_DEFAULT = _REPO_ROOT / "checkpoints/exp002_unet2d_psdm/epoch=191.ckpt"
+CONFIG_YAML_DEFAULT = _REPO_ROOT / "configs/exp002_unet2d_psdm.yaml"
 
 SPLITS_PATH = _REPO_ROOT / "data/splits/splits_v1.json"
 RX_GY = 78.0
 OARS = ["Rectum", "Bladder"]
 
 
-def main(csv_path=None, output_dir=None):
-    csv_path = Path(csv_path) if csv_path else _REPO_ROOT / "../insumos temporales/objetivos_optimizacion.csv"
+def main(csv_path=None, output_dir=None, checkpoint=None, config_yaml=None, processed_dir=None):
+    csv_path = Path(csv_path) if csv_path else _REPO_ROOT / "data/objetivos_optimizacion.csv"
     output_dir = Path(output_dir) if output_dir else _REPO_ROOT / "results/comparacion_rapidplan_normo_test59"
+    checkpoint = Path(checkpoint) if checkpoint else CHECKPOINT_DEFAULT
+    config_yaml = Path(config_yaml) if config_yaml else CONFIG_YAML_DEFAULT
     plots_dir = output_dir / "plots"
     output_dir.mkdir(parents=True, exist_ok=True)
     plots_dir.mkdir(parents=True, exist_ok=True)
@@ -74,10 +81,16 @@ def main(csv_path=None, output_dir=None):
         print(f"[!] {len(ids_ambiguos_en_test)} paciente(s) de test con >1 plan en el CSV "
               f"(ambiguo, salteados): {ids_ambiguos_en_test}")
 
-    cfg = OmegaConf.load(str(CONFIG_YAML))
+    cfg = OmegaConf.load(str(config_yaml))
+    # processed_dir: usar el override si vino, si no el que ya trae el yaml
+    # (el yaml de exp002_unet2d_psdm_ctfix_fov34 ya apunta a processed_ctfix_34/).
+    PROCESSED_DIR = Path(processed_dir) if processed_dir else Path(cfg.data.processed_dir)
     cfg.data.processed_dir = str(PROCESSED_DIR)
+    print(f"Checkpoint: {checkpoint}")
+    print(f"Config: {config_yaml}")
+    print(f"Processed dir: {PROCESSED_DIR}")
     torch.set_float32_matmul_precision("high")
-    model, device = cargar_modelo(str(CHECKPOINT), cfg)
+    model, device = cargar_modelo(str(checkpoint), cfg)
 
     filas = []
     curvas_por_oar = {oar: [] for oar in OARS}  # lista de (v_unet_grid, v_rp_grid) por paciente
@@ -227,5 +240,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--csv", default=None)
     parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--checkpoint", default=None, help=f"default: {CHECKPOINT_DEFAULT}")
+    parser.add_argument("--config", default=None, help=f"default: {CONFIG_YAML_DEFAULT}")
+    parser.add_argument("--processed-dir", default=None, help="default: el processed_dir del --config")
     args = parser.parse_args()
-    main(csv_path=args.csv, output_dir=args.output_dir)
+    main(csv_path=args.csv, output_dir=args.output_dir, checkpoint=args.checkpoint,
+         config_yaml=args.config, processed_dir=args.processed_dir)

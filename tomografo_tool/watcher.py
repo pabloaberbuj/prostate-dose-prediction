@@ -143,7 +143,7 @@ class PatientFolderMonitor:
         pendientes.sort(key=lambda p: p["listo_desde"] or 0)
         return pendientes
 
-    def procesar_seleccionado(self, carpeta_str: str) -> dict:
+    def procesar_seleccionado(self, carpeta_str: str, on_fase=None) -> dict:
         """Dispara pipeline.procesar_paciente() para la carpeta elegida (sincrono,
         como /abrir_carpeta). Lanza ValueError si esa carpeta no esta disponible
         (no existe, ya se proceso, o ya la esta procesando otro pedido)."""
@@ -155,7 +155,7 @@ class PatientFolderMonitor:
 
         import pipeline  # import tardio: evita ciclo al testear watcher solo
         try:
-            resultado = pipeline.procesar_paciente(cand.path)
+            resultado = pipeline.procesar_paciente(cand.path, on_fase=on_fase)
         finally:
             cand.done = True
             cand.processing = False

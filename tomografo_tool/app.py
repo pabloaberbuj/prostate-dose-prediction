@@ -2,11 +2,18 @@
 ya construido y validado del Proyecto 1 (Tareas 6-7) -- ver pipeline.py.
 
 Rutas:
-  GET  /               UI (semaforo + metricas + cola de pendientes)
-  GET  /ultimo          JSON con el ultimo resultado procesado
-  GET  /cola            JSON con los pacientes listos, esperando seleccion manual
-  POST /procesar_cola   procesa el paciente elegido de la cola (sincrono)
-  POST /abrir_carpeta   procesa una carpeta manualmente (sincrono)
+  GET  /                     UI (semaforo + metricas + cola de pendientes)
+  GET  /ultimo                JSON con el ultimo resultado procesado
+  GET  /cola                  JSON con los pacientes listos, esperando seleccion manual
+  GET  /estado_procesamiento  JSON con la fase actual (extrayendo features / infiriendo)
+  POST /procesar_cola         dispara el procesamiento del paciente elegido (async)
+  POST /abrir_carpeta         dispara el procesamiento de una carpeta manual (async)
+
+El procesamiento en si (extraer_features + predecir_paciente, scripts/*.py del
+Proyecto 1) corre en un thread aparte -- las rutas POST devuelven de inmediato un
+ack y el frontend hace polling de /estado_procesamiento mientras corre, y de
+/ultimo cuando termina. Esto es lo que permite mostrar en que fase esta (en vez de
+un "Procesando..." fijo varios segundos sin decir nada mas).
 
 Uso:
   python app.py
@@ -35,6 +42,7 @@ _WATCH_FOLDER_PLACEHOLDER = "C:/ruta/a/carpeta/monitoreada"
 _lock = threading.Lock()
 _ultimo_resultado = {"estado": "esperando"}
 _monitor = None  # PatientFolderMonitor activo, o None si no hay watch_folder configurado
+_estado_procesamiento = {"activo": False}
 
 
 def _set_ultimo(resultado: dict):
@@ -43,6 +51,21 @@ def _set_ultimo(resultado: dict):
         _ultimo_resultado = resultado
     log.info("Ultimo resultado actualizado: paciente=%s estado=%s",
               resultado.get("patient_id"), resultado.get("estado"))
+
+
+def _set_fase(fase: str, carpeta: str = None):
+    with _lock:
+        _estado_procesamiento["activo"] = True
+        _estado_procesamiento["fase"] = fase
+        if carpeta is not None:
+            _estado_procesamiento["carpeta"] = carpeta
+    log.info("Fase de procesamiento: %s (%s)", fase, carpeta)
+
+
+def _limpiar_fase():
+    with _lock:
+        _estado_procesamiento.clear()
+        _estado_procesamiento["activo"] = False
 
 
 def _cargar_config():
@@ -59,6 +82,12 @@ def index():
 def ultimo():
     with _lock:
         return jsonify(_ultimo_resultado)
+
+
+@app.route("/estado_procesamiento")
+def estado_procesamiento():
+    with _lock:
+        return jsonify(dict(_estado_procesamiento))
 
 
 @app.route("/cola")
@@ -78,13 +107,26 @@ def procesar_cola():
     if not carpeta:
         return jsonify({"estado": "error", "error": "Falta el parametro 'carpeta'"}), 400
 
-    try:
-        resultado = _monitor.procesar_seleccionado(carpeta)
-    except ValueError as e:
-        return jsonify({"estado": "error", "error": str(e)}), 400
+    with _lock:
+        if _estado_procesamiento.get("activo"):
+            return jsonify({"estado": "error",
+                             "error": "Ya se esta procesando otro paciente, esperar a que termine."}), 409
+        _estado_procesamiento.clear()
+        _estado_procesamiento.update({"activo": True, "fase": "iniciando", "carpeta": carpeta})
 
-    _set_ultimo(resultado)
-    return jsonify(resultado)
+    def _worker():
+        try:
+            resultado = _monitor.procesar_seleccionado(carpeta, on_fase=lambda f: _set_fase(f, carpeta))
+            _set_ultimo(resultado)
+        except ValueError as e:
+            log.warning("No se pudo procesar %s: %s", carpeta, e)
+            _set_ultimo({"estado": "error", "carpeta": carpeta, "patient_id": Path(carpeta).name,
+                         "timestamp": "", "error": str(e)})
+        finally:
+            _limpiar_fase()
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return jsonify({"estado": "iniciado", "carpeta": carpeta}), 202
 
 
 @app.route("/abrir_carpeta", methods=["POST"])
@@ -98,9 +140,23 @@ def abrir_carpeta():
     if not carpeta_path.is_dir():
         return jsonify({"estado": "error", "error": f"No existe la carpeta: {carpeta}"}), 400
 
-    resultado = pipeline.procesar_paciente(carpeta_path)
-    _set_ultimo(resultado)
-    return jsonify(resultado)
+    with _lock:
+        if _estado_procesamiento.get("activo"):
+            return jsonify({"estado": "error",
+                             "error": "Ya se esta procesando otro paciente, esperar a que termine."}), 409
+        _estado_procesamiento.clear()
+        _estado_procesamiento.update({"activo": True, "fase": "iniciando", "carpeta": str(carpeta_path)})
+
+    def _worker():
+        try:
+            resultado = pipeline.procesar_paciente(
+                carpeta_path, on_fase=lambda f: _set_fase(f, str(carpeta_path)))
+            _set_ultimo(resultado)
+        finally:
+            _limpiar_fase()
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return jsonify({"estado": "iniciado", "carpeta": str(carpeta_path)}), 202
 
 
 def _iniciar_watcher(config: dict):
@@ -125,7 +181,20 @@ def _iniciar_watcher(config: dict):
     return monitor
 
 
+def _precalentar_modelos_bg():
+    """Corre en background al arrancar la app: paga de una sola vez el import en
+    frio de sklearn/joblib (medido ~1-3s) para que el primer paciente real del dia
+    no lo pague el. No bloqueante -- si falla, solo se loguea."""
+    try:
+        pipeline.precalentar_modelos()
+        log.info("Modelos precalentados.")
+    except Exception:
+        log.exception("No se pudieron precalentar los modelos (no bloqueante, "
+                       "el primer paciente real pagara ese costo).")
+
+
 if __name__ == "__main__":
     config = _cargar_config()
     _monitor = _iniciar_watcher(config)
+    threading.Thread(target=_precalentar_modelos_bg, daemon=True).start()
     app.run(host=config.get("host", "0.0.0.0"), port=config.get("port", 5000))

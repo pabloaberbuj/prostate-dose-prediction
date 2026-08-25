@@ -156,21 +156,56 @@
       return `hace ${Math.round(seg / 60)}min`;
     }
 
+    // El procesamiento real (extraer_features + inferencia) corre en un thread
+    // aparte en el servidor -- las rutas POST devuelven de inmediato. Esto hace
+    // polling de la fase actual mientras dura, para no dejar un "Procesando..."
+    // fijo varios segundos sin decir que esta pasando (la inferencia del primer
+    // paciente del dia puede tardar unos segundos por el import en frio de
+    // sklearn/joblib).
+    const FASE_LABEL = {
+      iniciando: "Iniciando...",
+      extrayendo_features: "Extrayendo features del CT/RS...",
+      corriendo_inferencia: "Corriendo inferencia del modelo...",
+    };
+
+    function textoFase(estado) {
+      return FASE_LABEL[estado.fase] || "Procesando...";
+    }
+
+    async function esperarProcesamiento(onTick) {
+      while (true) {
+        let estado;
+        try {
+          estado = await (await fetch("/estado_procesamiento")).json();
+        } catch (e) {
+          console.error("Error consultando /estado_procesamiento:", e);
+          break;
+        }
+        if (!estado.activo) break;
+        onTick(estado);
+        await new Promise((r) => setTimeout(r, 600));
+      }
+    }
+
     async function procesarDeCola(carpeta, btn) {
       btn.disabled = true;
-      btn.textContent = "Procesando...";
+      btn.textContent = "Iniciando...";
       try {
         const resp = await fetch("/procesar_cola", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify({carpeta}),
         });
-        const data = await resp.json();
-        ultimoKey = null;
-        render(data);
+        const ack = await resp.json();
         if (!resp.ok) {
-          alert("Error procesando: " + (data.error || "desconocido"));
+          alert("Error: " + (ack.error || "desconocido"));
+          btn.disabled = false;
+          btn.textContent = "Procesar este";
+          return;
         }
+        await esperarProcesamiento((estado) => { btn.textContent = textoFase(estado); });
+        ultimoKey = null;
+        await poll();
       } catch (e) {
         alert("Error de red: " + e);
       } finally {
@@ -228,20 +263,29 @@
       ev.preventDefault();
       const carpeta = document.getElementById("input-carpeta").value.trim();
       const statusEl = document.getElementById("manual-status");
+      const btn = ev.target.querySelector("button[type=submit]");
       if (!carpeta) return;
-      statusEl.textContent = "Procesando...";
+      btn.disabled = true;
+      statusEl.textContent = "Iniciando...";
       try {
         const resp = await fetch("/abrir_carpeta", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify({carpeta}),
         });
-        const data = await resp.json();
-        statusEl.textContent = resp.ok ? "" : ("Error: " + (data.error || "desconocido"));
+        const ack = await resp.json();
+        if (!resp.ok) {
+          statusEl.textContent = "Error: " + (ack.error || "desconocido");
+          return;
+        }
+        await esperarProcesamiento((estado) => { statusEl.textContent = textoFase(estado); });
         ultimoKey = null;
-        render(data);
+        await poll();
+        statusEl.textContent = "";
       } catch (e) {
         statusEl.textContent = "Error de red: " + e;
+      } finally {
+        btn.disabled = false;
       }
     });
 

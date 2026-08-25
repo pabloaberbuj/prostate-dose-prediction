@@ -21,12 +21,21 @@ import pydicom
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
-from extract_features_live import extraer_features, cargar_config  # noqa: E402
+from extract_features_live import extraer_features, cargar_config, FEATURE_COLS_FINAL  # noqa: E402
 from infer_tomografo import predecir_paciente  # noqa: E402
 
 log = logging.getLogger("tomografo_tool.pipeline")
 
 REGISTROS_DIR = Path(__file__).resolve().parent / "registros"
+
+
+def precalentar_modelos():
+    """Corre una inferencia dummy al arrancar la app para pagar de una sola vez el
+    import en frio de sklearn/joblib (medido: ~1-3s la primera vez, ~20ms despues).
+    Sin esto, ese costo lo paga el primer paciente real del dia. No toca DICOM ni
+    guarda registro -- valores dummy, se descarta el resultado."""
+    feats_dummy = {c: 0.0 for c in FEATURE_COLS_FINAL}
+    predecir_paciente(feats_dummy)
 
 
 def identificar_paciente(carpeta: Path) -> str:
@@ -84,20 +93,31 @@ def _carpeta_plana(carpeta: Path):
         yield tmp_path
 
 
-def procesar_paciente(carpeta: Path) -> dict:
+def procesar_paciente(carpeta: Path, on_fase=None) -> dict:
     """Punto de entrada unico de la herramienta. Extrae features (Tarea 7 en vivo),
     corre inferencia (modelos/umbrales del Proyecto 1), arma el dict de resultado,
     lo guarda en registros/ y lo devuelve. No lanza excepciones hacia el llamador:
     en caso de error, devuelve un dict con "estado": "error" para que el watcher y
-    la ruta manual de Flask puedan mostrarlo sin crashear."""
+    la ruta manual de Flask puedan mostrarlo sin crashear.
+
+    on_fase(fase: str), si se pasa, se llama al empezar cada etapa larga
+    ("extrayendo_features", "corriendo_inferencia") -- pensado para que quien
+    llama (app.py) pueda exponer un mensaje de progreso mientras esto corre en un
+    thread aparte. La primera inferencia de cada proceso de la app tarda bastante
+    mas (~1-3s) que las siguientes por el import en frio de sklearn/joblib al
+    cargar los .joblib por primera vez (confirmado con medicion); de ahi en mas
+    son ~20ms. Ver tambien el precalentado en app.py."""
     carpeta = Path(carpeta)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     patient_id = identificar_paciente(carpeta)
+    on_fase = on_fase or (lambda fase: None)
 
     try:
         config = cargar_config()
+        on_fase("extrayendo_features")
         with _carpeta_plana(carpeta) as carpeta_plana:
             feats = extraer_features(carpeta_plana, config)
+        on_fase("corriendo_inferencia")
         resultado_modelo = predecir_paciente(feats)
         por_constraint = resultado_modelo["por_constraint"]
         por_oar = resultado_modelo["por_oar"]
