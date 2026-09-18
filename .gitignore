@@ -46,6 +46,11 @@ mapping_*.csv
 mapping_*.json
 *_mapping*
 
+# Credenciales (nunca versionar)
+kaggle.json
+*.netrc
+.netrc
+
 # W&B local cache
 wandb/
 
@@ -61,3 +66,7 @@ predictions/
 
 # Configs locales con paths absolutos
 configs/local_*.yaml
+
+# tomografo_tool: registros/logs de pacientes reales del shadow testing (PHI, PatientID real)
+tomografo_tool/registros/
+tomografo_tool/logs/

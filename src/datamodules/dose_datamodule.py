@@ -22,6 +22,8 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
+from src.config.anatomy import load_anatomy
+
 
 # ─── Dataset ──────────────────────────────────────────────────────────────────
 
@@ -31,13 +33,14 @@ class DosePatientDataset(Dataset):
     Con cache_in_ram=True carga todos los NPZ al inicio → elimina el I/O durante training.
     """
 
-    def __init__(self, npz_paths: list, augment: bool = False,
+    def __init__(self, npz_paths: list, structures: list, augment: bool = False,
                  flip_lr_prob: float = 0.5,
                  rotation_degrees: float = 10.0,
                  intensity_jitter: float = 0.05,
                  fixed_n_slices: Optional[int] = None,
                  cache_in_ram: bool = True):
         self.npz_paths = [Path(p) for p in npz_paths]
+        self.structures = structures
         self.augment = augment
         self.flip_lr_prob = flip_lr_prob
         self.rotation_degrees = rotation_degrees
@@ -45,6 +48,14 @@ class DosePatientDataset(Dataset):
         self.fixed_n_slices = fixed_n_slices
         self.cache_in_ram = cache_in_ram
         self._cache = {}
+
+        # Único punto de verdad para las claves de array del NPZ (antes repetidas
+        # de forma independiente en _apply_augmentation/_rotate_volume/_pad_or_crop_z
+        # como 3 listas hardcodeadas separadas de ptv/rectum/bladder_mask + psdm_*).
+        self._mask_keys = [f'{s.key}_mask' for s in self.structures]
+        self._psdm_keys = [f'psdm_{s.key}' for s in self.structures
+                            if s.input_channels.get('psdm')]
+        self._all_keys = ['ct', 'dose'] + self._mask_keys + self._psdm_keys
 
         if cache_in_ram:
             print(f"  Cargando {len(self.npz_paths)} pacientes en RAM...")
@@ -69,18 +80,15 @@ class DosePatientDataset(Dataset):
         # Masks en uint8 (originalmente ya son uint8 en disco — no hay pérdida de información).
         # Todo se convierte a float32 en __getitem__ antes de pasarlo al modelo.
         result = {
-            'ct':           torch.from_numpy(np.array(data['ct'],           dtype=np.float32)).half(),
-            'dose':         torch.from_numpy(np.array(data['dose'],         dtype=np.float32)).half(),
-            'ptv_mask':     torch.from_numpy(np.array(data['ptv_mask'],     dtype=np.uint8)),
-            'body_mask':    torch.from_numpy(np.array(data['body_mask'],    dtype=np.uint8)),
-            'rectum_mask':  torch.from_numpy(np.array(data['rectum_mask'],  dtype=np.uint8)),
-            'bladder_mask': torch.from_numpy(np.array(data['bladder_mask'], dtype=np.uint8)),
-            'psdm_ptv':     torch.from_numpy(np.array(data['psdm_ptv'],     dtype=np.float32)).half(),
-            'psdm_rectum':  torch.from_numpy(np.array(data['psdm_rectum'],  dtype=np.float32)).half(),
-            'psdm_bladder': torch.from_numpy(np.array(data['psdm_bladder'], dtype=np.float32)).half(),
-            'anonid':       meta.get('anonid', path.stem),
-            'factor_norm':  float(meta.get('factor_norm', 1.0)),
+            'ct':          torch.from_numpy(np.array(data['ct'],   dtype=np.float32)).half(),
+            'dose':        torch.from_numpy(np.array(data['dose'], dtype=np.float32)).half(),
+            'anonid':      meta.get('anonid', path.stem),
+            'factor_norm': float(meta.get('factor_norm', 1.0)),
         }
+        for key in self._mask_keys:
+            result[key] = torch.from_numpy(np.array(data[key], dtype=np.uint8))
+        for key in self._psdm_keys:
+            result[key] = torch.from_numpy(np.array(data[key], dtype=np.float32)).half()
         data.close()
         return result
 
@@ -110,8 +118,7 @@ class DosePatientDataset(Dataset):
     def _apply_augmentation(self, sample: dict) -> dict:
         # Flip LR
         if torch.rand(1).item() < self.flip_lr_prob:
-            for key in ['ct', 'dose', 'ptv_mask', 'body_mask', 'rectum_mask',
-                        'bladder_mask', 'psdm_ptv', 'psdm_rectum', 'psdm_bladder']:
+            for key in self._all_keys:
                 sample[key] = torch.flip(sample[key], dims=[-1])
 
         # Rotación pequeña (en el plano axial)
@@ -136,12 +143,14 @@ class DosePatientDataset(Dataset):
                               [sin_a,  cos_a, 0]], dtype=torch.float32)
         theta = theta.unsqueeze(0).expand(Z, -1, -1)
 
-        for key, mode in [
-            ('ct', 'bilinear'), ('dose', 'bilinear'),
-            ('psdm_ptv', 'bilinear'), ('psdm_rectum', 'bilinear'), ('psdm_bladder', 'bilinear'),
-            ('ptv_mask', 'nearest'), ('body_mask', 'nearest'),
-            ('rectum_mask', 'nearest'), ('bladder_mask', 'nearest'),
-        ]:
+        # bilinear para continuas (ct/dose/psdm_*), nearest para máscaras binarias —
+        # mismo criterio que la lista hardcodeada que reemplaza esto, ahora derivado
+        # de self._all_keys (single source of truth, ver __init__).
+        interp_por_key = [
+            (key, 'nearest' if key in self._mask_keys else 'bilinear')
+            for key in self._all_keys
+        ]
+        for key, mode in interp_por_key:
             vol = sample[key].unsqueeze(1)  # (Z, 1, H, W)
             grid = F.affine_grid(theta, vol.shape, align_corners=False)
             rotated = F.grid_sample(vol, grid, mode=mode, align_corners=False,
@@ -157,16 +166,14 @@ class DosePatientDataset(Dataset):
             # Crop centrado en Z
             start = (z_actual - n_target) // 2
             end   = start + n_target
-            for key in ['ct', 'dose', 'ptv_mask', 'body_mask', 'rectum_mask',
-                        'bladder_mask', 'psdm_ptv', 'psdm_rectum', 'psdm_bladder']:
+            for key in self._all_keys:
                 sample[key] = sample[key][start:end]
         else:
             # Pad simétrico en Z (con ceros)
             pad_total = n_target - z_actual
             pad_before = pad_total // 2
             pad_after  = pad_total - pad_before
-            for key in ['ct', 'dose', 'ptv_mask', 'body_mask', 'rectum_mask',
-                        'bladder_mask', 'psdm_ptv', 'psdm_rectum', 'psdm_bladder']:
+            for key in self._all_keys:
                 # F.pad espera padding al revés: (left, right, top, bottom, front, back)
                 # Para tensor (Z, H, W), padear en Z = primer eje
                 pad_value = 0.0 if 'mask' not in key else 0
@@ -221,17 +228,23 @@ class DoseDataModule(pl.LightningDataModule):
         else:
             print(f"[DataModule] Sin cache — carga desde disco por batch (compute-bound, <3% overhead)")
 
+        # Ver mismo fallback y razón en src/models/lightning_module.py.
+        anatomy_schema = self.cfg.get("anatomy_schema", None) if hasattr(self.cfg, "get") else None
+        if anatomy_schema is None:
+            anatomy_schema = load_anatomy("prostate")
+        structures = anatomy_schema.structures
+
         self.train_ds = DosePatientDataset(
-            train_paths, augment=True,
+            train_paths, structures, augment=True,
             flip_lr_prob     = self.cfg.augmentation.flip_lr_prob,
             rotation_degrees = self.cfg.augmentation.rotation_degrees,
             intensity_jitter = self.cfg.augmentation.intensity_jitter_hu / 1000.0,
             fixed_n_slices   = n_target,
             cache_in_ram     = self.cache_train,
         )
-        self.val_ds  = DosePatientDataset(val_paths,  augment=False,
+        self.val_ds  = DosePatientDataset(val_paths, structures, augment=False,
                                           fixed_n_slices=n_target, cache_in_ram=self.cache_val)
-        self.test_ds = DosePatientDataset(test_paths, augment=False,
+        self.test_ds = DosePatientDataset(test_paths, structures, augment=False,
                                           fixed_n_slices=n_target, cache_in_ram=False)
 
         print(f"[DataModule] Train: {len(self.train_ds)}, Val: {len(self.val_ds)}, Test: {len(self.test_ds)}")

@@ -1,0 +1,66 @@
+# ============================================================
+# Anatomy schema — Próstata normofraccionado (78Gy/39fx).
+# Mapeo 1:1 del comportamiento HARDCODEADO actual de data/preprocess.py,
+# src/models/lightning_module.py y src/datamodules/dose_datamodule.py.
+# NO cambiar valores acá sin correr el test de regresión (ver docs/CLI_INSTRUCTIVO.md).
+# ============================================================
+
+anatomy:
+  name: prostate
+  description: "Próstata — normofraccionado 78Gy/39fx (pipeline actual, preprocess.py)"
+
+  # Estructura ancla: centroide de recorte XY, chequeo de clipping, D95 de referencia.
+  primary_target: ptv
+
+  # Orden = prioridad de autodetección (buscar() recorre en este orden, case-insensitive
+  # como fallback) — replica OPCIONES_PTV / OPCIONES_BODY / OAR_NAMES exactos.
+  structures:
+    - key: ptv
+      role: target
+      dicom_aliases: ["PTV", "PTV_High", "PTV_High2", "PTV_Abr22", "PTVp"]
+      required: true       # si no se encuentra, aborta el paciente (comportamiento actual)
+      input_channels: {mask: true, psdm: true}
+    - key: body
+      role: body
+      dicom_aliases: ["BODY", "body", "Body", "External", "Body1", "BODY1"]
+      required: false       # si no aparece, máscara vacía (comportamiento actual)
+      input_channels: {mask: true, psdm: false}
+    - key: rectum
+      role: oar
+      dicom_aliases: ["Rectum"]
+      required: false
+      input_channels: {mask: true, psdm: true}
+    - key: bladder
+      role: oar
+      dicom_aliases: ["Bladder"]
+      required: false
+      input_channels: {mask: true, psdm: true}
+
+  # Estructuras cuya presencia define el recorte axial en Z (recortar_axial()).
+  z_crop_roi_keys: [ptv, rectum, bladder]
+
+  prescription:
+    dose_gy: 78.0
+    num_fractions: 39
+
+  preprocessing:
+    ct_hu_min: -1000.0
+    ct_hu_max: 1500.0
+    inplane_size: 256
+    z_margin_slices: 5
+    psdm_norm_cm: 15.0
+    inplane_crop_mm: 500.0
+
+  # Misma semántica que hoy en configs/exp*.yaml::constraints (bloque legacy, sigue
+  # existiendo en paralelo — ver src/config/anatomy.py sobre precedencia).
+  constraints:
+    ptv:
+      d95_target_pct: 100.0
+    rectum:
+      v70_max_pct: 25.0
+      v65_max_pct: 35.0
+      dmean_max_gy: null
+    bladder:
+      v70_max_pct: 35.0
+      v65_max_pct: 50.0
+      dmean_max_gy: null

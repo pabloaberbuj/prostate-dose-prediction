@@ -1,0 +1,44 @@
+# ============================================================
+# Anatomy schema — Próstata hipofraccionado (70Gy/28fx, FOV 34cm).
+# extends prostate.yaml — mapeo 1:1 de data/preprocess_hipo.py (dataset ctfix v4).
+# ============================================================
+
+extends: prostate.yaml
+
+anatomy:
+  name: prostate_hipo
+  description: "Próstata — hipofraccionado 70Gy/28fx, FOV 34cm (preprocess_hipo.py, dataset ctfix v4)"
+
+  structures:
+    - key: ptv
+      # PTV_ALIAS_PRIORITY real de preprocess_hipo.py — el orden difiere del normo
+      # (PTV_High primero, no PTV). Además existe un mecanismo adicional por-paciente
+      # (resolver_nombre_ptv(): prioridad 1 = columna NombrePTV de un CSV externo,
+      # no representable en YAML estático) que sigue viviendo en preprocess_hipo.py
+      # como override, NO en este schema.
+      dicom_aliases: ["PTV_High", "PTV", "PTV_High1", "PTV_High2", "PTV_Highrecor", "PTV_Ptta"]
+
+  prescription:
+    dose_gy: 70.0
+    num_fractions: 28
+
+  preprocessing:
+    inplane_crop_mm: 340.0   # FOV definitivo hipo (HIPOFX_KICKOFF.md)
+
+  # Constraints operativos vigentes (ver configs/exp_hipo_004_finetune_ctfix_v4.yaml).
+  # V45 y Dmean son de solo registro, no de clasificación — evaluate_hipo.py calibra
+  # su propio punto de operación en val (OPERATIONAL_CONSTRAINTS, congelado) y NO lee
+  # este bloque directamente; queda acá por trazabilidad del criterio clínico.
+  constraints:
+    rectum:
+      v70_max_pct: null
+      v65_max_pct: 15.0
+      v55_max_pct: 25.0
+      v45_max_pct: 45.0
+      dmean_max_gy: 40.0
+    bladder:
+      v70_max_pct: null
+      v65_max_pct: 15.0
+      v55_max_pct: 25.0
+      v45_max_pct: 45.0
+      dmean_max_gy: 40.0

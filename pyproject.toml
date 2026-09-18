@@ -1,0 +1,20 @@
+[project]
+name = "dosekbp"
+version = "0.1.0"
+description = "Pipeline de predicción de dosis (KBP) — preprocesado, entrenamiento, evaluación e inferencia, generalizado a múltiples localizaciones anatómicas."
+requires-python = ">=3.10"
+dependencies = [
+    "typer>=0.12",
+    "omegaconf>=2.3",
+]
+
+[project.scripts]
+dosekbp = "dosekbp.cli:app"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dosekbp*", "src*"]

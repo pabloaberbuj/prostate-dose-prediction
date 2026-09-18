@@ -30,6 +30,7 @@ Uso:
 import argparse
 import json
 import logging
+import sys
 import warnings
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -40,11 +41,21 @@ import SimpleITK as sitk
 from scipy.ndimage import distance_transform_edt
 from tqdm import tqdm
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.config.anatomy import load_anatomy  # noqa: E402
+
 warnings.filterwarnings("ignore", category=UserWarning)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
 # ─── Constantes ───────────────────────────────────────────────────────────────
+# Defaults histéricos de próstata — desde el refactor a "anatomy schema" (ver
+# configs/anatomy/prostate.yaml y src/config/anatomy.py), procesar_paciente() ya NO
+# lee estas constantes: son ahora solo el default de firma de funciones standalone
+# (downsample_inplane, recortar_axial) para no romper otros llamadores (ej.
+# preprocess_hipo.py) que las siguen usando sin pasar anatomy. configs/anatomy/prostate.yaml
+# es la fuente de verdad para procesar_paciente(); estos valores deben coincidir con
+# ese YAML (hay un test de regresión que lo verifica, ver docs/CLI_INSTRUCTIVO.md).
 CT_HU_MIN      = -1000.0
 CT_HU_MAX      =  1500.0
 INPLANE_SIZE   = 256
@@ -388,14 +399,21 @@ def downsample_inplane(array_zyx: np.ndarray, target: int = INPLANE_SIZE) -> np.
 
 # ─── Recorte axial ───────────────────────────────────────────────────────────
 
-def recortar_axial(arrays: dict, margen: int = Z_MARGIN) -> dict:
+def recortar_axial(arrays: dict, margen: int = Z_MARGIN, roi_keys: list = None) -> dict:
     """
-    Recorta en Z conservando solo los cortes donde hay presencia de
-    PTV, Bladder o Rectum, más margen cortes arriba y abajo.
-    Aplica el mismo recorte a todos los arrays del dict.
+    Recorta en Z conservando solo los cortes donde hay presencia de alguna de
+    `roi_keys` (default ['ptv_mask', 'bladder_mask', 'rectum_mask'] — comportamiento
+    histórico de próstata, usado sin cambios por preprocess_hipo.py), más margen
+    cortes arriba y abajo. Aplica el mismo recorte a todos los arrays del dict.
+
+    procesar_paciente() pasa `roi_keys` derivado de anatomy.z_crop_roi_keys; otros
+    llamadores (preprocess_hipo.py) siguen sin pasarlo y usan el default de próstata.
     """
-    roi_union = np.zeros_like(arrays['ptv_mask'])
-    for key in ['ptv_mask', 'bladder_mask', 'rectum_mask']:
+    if roi_keys is None:
+        roi_keys = ['ptv_mask', 'bladder_mask', 'rectum_mask']
+
+    roi_union = np.zeros_like(arrays[roi_keys[0]])
+    for key in roi_keys:
         if key in arrays:
             roi_union = np.maximum(roi_union, arrays[key])
 
@@ -419,11 +437,25 @@ def recortar_axial(arrays: dict, margen: int = Z_MARGIN) -> dict:
 # ─── Procesado de un paciente ─────────────────────────────────────────────────
 
 def procesar_paciente(anonid: str, carpeta_dicom: Path, output_dir: Path,
-                       crop_mm: float = INPLANE_CROP_MM) -> dict:
+                       anatomy=None, crop_mm: float = None) -> dict:
     """
     Pipeline completo para un paciente. Devuelve dict con métricas de QC.
     Lanza excepción si algo falla.
+
+    `anatomy`: DictConfig de configs/anatomy/*.yaml (ver src/config/anatomy.py) —
+    declara qué estructuras existen, sus alias DICOM, y los parámetros de
+    preprocesamiento (antes constantes módulo-level hardcodeadas). Default
+    (`anatomy=None`) carga "prostate", que reproduce EXACTO el comportamiento
+    histórico de esta función (mismos OPCIONES_PTV/OPCIONES_BODY/OAR_NAMES,
+    mismos CT_HU_MIN/MAX/INPLANE_SIZE/Z_MARGIN/PSDM_NORM_CM/INPLANE_CROP_MM —
+    ver test de regresión en docs/CLI_INSTRUCTIVO.md).
     """
+    if anatomy is None:
+        anatomy = load_anatomy("prostate")
+    prep = anatomy.preprocessing
+    if crop_mm is None:
+        crop_mm = prep.inplane_crop_mm
+
     out_path = output_dir / f"{anonid}.npz"
     if out_path.exists():
         return {'anonid': anonid, 'status': 'skipped (ya existe)'}
@@ -433,7 +465,8 @@ def procesar_paciente(anonid: str, carpeta_dicom: Path, output_dir: Path,
     rd_sitk  = cargar_rd(carpeta_dicom)
     estructuras = cargar_estructuras(carpeta_dicom)
 
-    # 2. Identificar estructuras por nombre
+    # 2. Identificar estructuras por nombre (orden = prioridad de anatomy.structures,
+    #    el orden de dicom_aliases de cada una replica OPCIONES_PTV/OPCIONES_BODY/etc.)
     def buscar(opciones):
         for op in opciones:
             if op in estructuras:
@@ -445,13 +478,14 @@ def procesar_paciente(anonid: str, carpeta_dicom: Path, output_dir: Path,
                     return nombre
         return None
 
-    nombre_ptv    = buscar(OPCIONES_PTV)
-    nombre_body   = buscar(OPCIONES_BODY)
-    nombre_rectum = buscar(['Rectum'])
-    nombre_bladder = buscar(['Bladder'])
+    nombres_encontrados = {s.key: buscar(s.dicom_aliases) for s in anatomy.structures}
 
-    if nombre_ptv is None:
-        raise ValueError(f"PTV no encontrado. Estructuras disponibles: {list(estructuras.keys())}")
+    for s in anatomy.structures:
+        if s.required and nombres_encontrados[s.key] is None:
+            raise ValueError(
+                f"{s.key} no encontrado (required=true en anatomy '{anatomy.name}'). "
+                f"Estructuras disponibles: {list(estructuras.keys())}"
+            )
 
     # 3. Construir máscaras en espacio CT
     def hacer_mascara(nombre):
@@ -460,137 +494,132 @@ def procesar_paciente(anonid: str, carpeta_dicom: Path, output_dir: Path,
             return np.zeros((sz[2], sz[1], sz[0]), dtype=np.uint8)
         return contornos_a_mascara(estructuras[nombre], ct_sitk)
 
-    ptv_mask     = hacer_mascara(nombre_ptv)
-    body_mask    = hacer_mascara(nombre_body)
-    rectum_mask  = hacer_mascara(nombre_rectum)
-    bladder_mask = hacer_mascara(nombre_bladder)
+    masks = {s.key: hacer_mascara(nombres_encontrados[s.key]) for s in anatomy.structures}
 
     # 4. Remuestrear dosis al espacio CT
     dosis_cgy = remuestrear_a_ct(rd_sitk, ct_sitk, sitk.sitkLinear)
 
     # 5. CT array y normalización HU (sobre grilla nativa completa, antes de recortar)
     ct_array = sitk.GetArrayFromImage(ct_sitk).astype(np.float32)
-    ct_norm  = np.clip(ct_array, CT_HU_MIN, CT_HU_MAX)
-    ct_norm  = (ct_norm - CT_HU_MIN) / (CT_HU_MAX - CT_HU_MIN)  # [0, 1]
-    ct_norm  = ct_norm * 2.0 - 1.0                               # [-1, 1]
+    ct_norm  = np.clip(ct_array, prep.ct_hu_min, prep.ct_hu_max)
+    ct_norm  = (ct_norm - prep.ct_hu_min) / (prep.ct_hu_max - prep.ct_hu_min)  # [0, 1]
+    ct_norm  = ct_norm * 2.0 - 1.0                                             # [-1, 1]
 
-    # 6. Normalizar dosis a D95(PTV) = 100% (sobre máscara PTV nativa completa, sin recortar:
-    #    el PTV siempre entra en la caja de recorte, así que el D95 no cambia por recortar)
-    dosis_norm_pct, factor_norm = normalizar_dosis(dosis_cgy, ptv_mask)
+    # 6. Normalizar dosis a D95(primary_target) = 100% (sobre máscara nativa completa,
+    #    sin recortar: el target siempre entra en la caja de recorte, así que el D95
+    #    no cambia por recortar)
+    target_mask = masks[anatomy.primary_target]
+    dosis_norm_pct, factor_norm = normalizar_dosis(dosis_cgy, target_mask)
 
     spacing_mm = ct_sitk.GetSpacing()  # (sx, sy, sz) en mm
 
     # 7. Recorte en el plano: caja cuadrada de crop_mm centrada en el centroide del
-    #    PTV. PTV/Rectum/Bladder deben entrar siempre completos (medido sobre 44 pacientes,
-    #    2026-08-23) — si no, es un caso anómalo y se aborta el paciente para revisión manual
-    #    en vez de guardar una máscara de OAR/PTV truncada en silencio. BODY sí puede clipear
-    #    en lateral (esperado en pacientes anchos) — eso queda como warning, no error.
-    cx, cy = centroide_fisico(ptv_mask, ct_sitk)
+    #    target. El target y los OAR deben entrar siempre completos (medido sobre 44
+    #    pacientes de próstata, 2026-08-23) — si no, es un caso anómalo y se aborta el
+    #    paciente para revisión manual en vez de guardar una máscara truncada en
+    #    silencio. BODY sí puede clipear en lateral (esperado en pacientes anchos) —
+    #    eso queda como warning, no error.
+    cx, cy = centroide_fisico(target_mask, ct_sitk)
     half_mm = crop_mm / 2.0
 
     clip_oar = {}
-    for nombre, mascara in [('PTV', ptv_mask), ('Rectum', rectum_mask), ('Bladder', bladder_mask)]:
-        ext = extensiones_mascara(mascara, ct_sitk, cx, cy)
+    for s in anatomy.structures:
+        if s.role not in ('target', 'oar'):
+            continue
+        ext = extensiones_mascara(masks[s.key], ct_sitk, cx, cy)
         excedente = {d: round(v - half_mm, 1) for d, v in ext.items() if v > half_mm}
         if excedente:
-            clip_oar[nombre] = excedente
+            clip_oar[s.key] = excedente
     if clip_oar:
         raise ValueError(
-            f"{anonid}: recorte de {crop_mm/10:.0f}cm corta OAR/PTV — revisar caso "
+            f"{anonid}: recorte de {crop_mm/10:.0f}cm corta OAR/target — revisar caso "
             f"a mano (excedentes mm: {clip_oar})"
         )
 
-    ext_body = extensiones_mascara(body_mask, ct_sitk, cx, cy)
-    clip_body = {d: round(v - half_mm, 1) for d, v in ext_body.items() if v > half_mm}
-    if clip_body:
-        log.warning(
-            f"{anonid}: BODY lateral clipeado {clip_body} mm por el recorte de "
-            f"{crop_mm/10:.0f}cm, sin afectar OARs/PTV — impacto esperado en piel/grasa "
-            f"de zona de dosis baja"
-        )
+    body_key = next((s.key for s in anatomy.structures if s.role == 'body'), None)
+    clip_body = {}
+    if body_key is not None:
+        ext_body = extensiones_mascara(masks[body_key], ct_sitk, cx, cy)
+        clip_body = {d: round(v - half_mm, 1) for d, v in ext_body.items() if v > half_mm}
+        if clip_body:
+            log.warning(
+                f"{anonid}: BODY lateral clipeado {clip_body} mm por el recorte de "
+                f"{crop_mm/10:.0f}cm, sin afectar OARs/target — impacto esperado en "
+                f"piel/grasa de zona de dosis baja"
+            )
 
     rec = calcular_recorte_plano(ct_sitk, cx, cy, crop_mm)
     ct_norm        = aplicar_recorte_plano(ct_norm,        rec, fill_value=-1.0)
     dosis_norm_pct = aplicar_recorte_plano(dosis_norm_pct, rec, fill_value=0.0)
-    ptv_mask       = aplicar_recorte_plano(ptv_mask,       rec, fill_value=0)
-    body_mask      = aplicar_recorte_plano(body_mask,      rec, fill_value=0)
-    rectum_mask    = aplicar_recorte_plano(rectum_mask,    rec, fill_value=0)
-    bladder_mask   = aplicar_recorte_plano(bladder_mask,   rec, fill_value=0)
+    for key in masks:
+        masks[key] = aplicar_recorte_plano(masks[key], rec, fill_value=0)
 
-    # 8. Calcular PSDM sobre la máscara nativa YA RECORTADA (mismo spacing nativo — el recorte
-    #    no resamplea, solo acota el FOV, así que la distancia física a cada estructura no
-    #    cambia salvo muy cerca del borde nuevo de la caja).
+    # 8. Calcular PSDM sobre la máscara nativa YA RECORTADA (mismo spacing nativo — el
+    #    recorte no resamplea, solo acota el FOV, así que la distancia física a cada
+    #    estructura no cambia salvo muy cerca del borde nuevo de la caja).
     spacing_zyx_mm = (spacing_mm[2], spacing_mm[1], spacing_mm[0])
 
-    psdm_ptv     = calcular_psdm(ptv_mask,     spacing_zyx_mm)
-    psdm_rectum  = calcular_psdm(rectum_mask,  spacing_zyx_mm)
-    psdm_bladder = calcular_psdm(bladder_mask, spacing_zyx_mm)
+    psdms = {s.key: calcular_psdm(masks[s.key], spacing_zyx_mm)
+             for s in anatomy.structures if s.input_channels.get('psdm')}
 
     # 9. Agrupar arrays y recortar axialmente
-    arrays = {
-        'ct':           ct_norm.astype(np.float32),
-        'dose':         dosis_norm_pct,
-        'ptv_mask':     ptv_mask,
-        'body_mask':    body_mask,
-        'rectum_mask':  rectum_mask,
-        'bladder_mask': bladder_mask,
-        'psdm_ptv':     psdm_ptv,
-        'psdm_rectum':  psdm_rectum,
-        'psdm_bladder': psdm_bladder,
-    }
-    arrays = recortar_axial(arrays, margen=Z_MARGIN)
+    arrays = {'ct': ct_norm.astype(np.float32), 'dose': dosis_norm_pct}
+    for key, m in masks.items():
+        arrays[f'{key}_mask'] = m
+    for key, p in psdms.items():
+        arrays[f'psdm_{key}'] = p
+
+    z_crop_keys = [f'{k}_mask' for k in anatomy.z_crop_roi_keys]
+    arrays = recortar_axial(arrays, margen=int(prep.z_margin_slices), roi_keys=z_crop_keys)
     z_range = arrays.pop('z_range')
 
-    # 10. Downsample in-plane a 256×256 (500mm/256 = 1.953mm/px isotrópico, fijo entre pacientes)
+    # 10. Downsample in-plane (500mm/256 = 1.953mm/px isotrópico en próstata, fijo
+    #     entre pacientes; otras anatomías usan su propio inplane_size/crop_mm)
+    inplane_size = int(prep.inplane_size)
     for key in arrays:
         if isinstance(arrays[key], np.ndarray) and arrays[key].ndim == 3:
-            arrays[key] = downsample_inplane(arrays[key], INPLANE_SIZE)
+            arrays[key] = downsample_inplane(arrays[key], inplane_size)
 
     # 11. QC mínimo
     n_slices  = arrays['ct'].shape[0]
-    vol_ptv   = float(ptv_mask.sum()) * np.prod(spacing_mm) / 1000.0  # cc
+    vol_target = float(target_mask.sum()) * np.prod(spacing_mm) / 1000.0  # cc
     dose_max  = float(arrays['dose'].max())
-    dose_ptv_d95 = float(np.percentile(arrays['dose'][arrays['ptv_mask'] > 0], 5))
+    dose_target_d95 = float(np.percentile(
+        arrays['dose'][arrays[f'{anatomy.primary_target}_mask'] > 0], 5))
 
     # 12. Guardar NPZ
     meta = {
         'anonid':         anonid,
+        'anatomy':        anatomy.name,
         'spacing_mm':     list(spacing_mm),          # spacing NATIVO (sx, sy, sz) — no confundir
                                                        # con el spacing efectivo del array guardado
-        'effective_inplane_spacing_mm': crop_mm / INPLANE_SIZE,
-        'crop_lado_mm':        crop_mm,
-        'centroide_ptv_xy_mm': [round(cx, 2), round(cy, 2)],
-        'body_clip_mm':        clip_body,
+        'effective_inplane_spacing_mm': crop_mm / inplane_size,
+        'crop_lado_mm':          crop_mm,
+        'centroide_target_xy_mm': [round(cx, 2), round(cy, 2)],
+        'body_clip_mm':          clip_body,
         'z_range':        list(z_range),
         'factor_norm':    factor_norm,
-        'nombre_ptv':     nombre_ptv or '',
-        'nombre_rectum':  nombre_rectum or '',
-        'nombre_bladder': nombre_bladder or '',
-        'vol_ptv_cc':     round(vol_ptv, 2),
+        'nombres_estructuras': {k: (v or '') for k, v in nombres_encontrados.items()},
+        'vol_ptv_cc':     round(vol_target, 2),   # nombre histórico (leído por evaluate.py,
+                                                    # dose_datamodule.py, etc.) — es el volumen
+                                                    # del primary_target, no solo de próstata
         'n_slices':       n_slices,
     }
 
     np.savez_compressed(
         str(out_path),
-        ct          = arrays['ct'],
-        dose        = arrays['dose'],
-        ptv_mask    = arrays['ptv_mask'],
-        body_mask   = arrays['body_mask'],
-        rectum_mask = arrays['rectum_mask'],
-        bladder_mask = arrays['bladder_mask'],
-        psdm_ptv    = arrays['psdm_ptv'],
-        psdm_rectum = arrays['psdm_rectum'],
-        psdm_bladder = arrays['psdm_bladder'],
-        meta        = np.array([json.dumps(meta)]),
+        ct=arrays['ct'], dose=arrays['dose'],
+        meta=np.array([json.dumps(meta)]),
+        **{k: v for k, v in arrays.items() if k not in ('ct', 'dose')},
     )
 
     return {
         'anonid':      anonid,
         'status':      'ok',
         'n_slices':    n_slices,
-        'vol_ptv_cc':  round(vol_ptv, 2),
+        'vol_ptv_cc':  round(vol_target, 2),
         'dose_max':    round(dose_max, 2),
-        'dose_d95_ptv': round(dose_ptv_d95, 2),
+        'dose_d95_ptv': round(dose_target_d95, 2),
         'factor_norm': round(factor_norm, 4),
         'body_clip_mm': clip_body,
     }
@@ -599,10 +628,13 @@ def procesar_paciente(anonid: str, carpeta_dicom: Path, output_dir: Path,
 # ─── Worker para multiprocessing ─────────────────────────────────────────────
 
 def _worker(args):
-    anonid, dicom_root, output_dir, crop_mm = args
+    anonid, dicom_root, output_dir, crop_mm, anatomy_name = args
     carpeta = Path(dicom_root) / anonid
     try:
-        return procesar_paciente(anonid, carpeta, Path(output_dir), crop_mm=crop_mm)
+        # Cada proceso worker carga su propio anatomy schema (barato — un YAML chico)
+        # en vez de pasar el DictConfig ya cargado a través del ProcessPoolExecutor.
+        anatomy = load_anatomy(anatomy_name)
+        return procesar_paciente(anonid, carpeta, Path(output_dir), anatomy=anatomy, crop_mm=crop_mm)
     except Exception as e:
         return {'anonid': anonid, 'status': f'ERROR: {e}'}
 
@@ -610,16 +642,24 @@ def _worker(args):
 # ─── CLI principal ────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="Preprocesado DICOM → NPZ")
+    parser = argparse.ArgumentParser(description="Preprocesado DICOM -> NPZ")
     parser.add_argument("--dicom-root",  required=True, help="Carpeta raíz con subcarpetas por AnonID")
     parser.add_argument("--output-dir",  required=True, help="Carpeta de salida para NPZs")
     parser.add_argument("--splits",      required=True, help="JSON con splits train/val/test")
     parser.add_argument("--workers",     type=int, default=1, help="Número de procesos paralelos")
     parser.add_argument("--only",        nargs="+",     help="Procesar solo estos AnonIDs")
-    parser.add_argument("--crop-mm",     type=float, default=INPLANE_CROP_MM,
-                        help=f"Lado (mm) de la caja de recorte en el plano, centrada en el "
-                             f"centroide del PTV (default {INPLANE_CROP_MM:.0f}mm)")
+    parser.add_argument("--anatomy",     default="prostate",
+                        help="Nombre (configs/anatomy/<nombre>.yaml) o path del anatomy "
+                             "schema a usar (default 'prostate' — comportamiento histórico, "
+                             "sin cambios). Ver configs/anatomy/ para los schemas disponibles.")
+    parser.add_argument("--crop-mm",     type=float, default=None,
+                        help="Lado (mm) de la caja de recorte en el plano, centrada en el "
+                             "centroide del target. Default: el que declare el anatomy schema "
+                             f"(prostate = {INPLANE_CROP_MM:.0f}mm)")
     args = parser.parse_args()
+
+    anatomy = load_anatomy(args.anatomy)
+    crop_mm = args.crop_mm if args.crop_mm is not None else anatomy.preprocessing.inplane_crop_mm
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -637,11 +677,12 @@ def main():
         log.info(f"Modo --only: procesando {len(anonids)} pacientes")
 
     log.info(f"Total a procesar: {len(anonids)} pacientes")
+    log.info(f"Anatomy: {anatomy.name} ({args.anatomy})")
     log.info(f"Output: {output_dir}")
     log.info(f"Workers: {args.workers}")
-    log.info(f"Crop en el plano: {args.crop_mm:.0f}mm ({args.crop_mm/10:.1f}cm)")
+    log.info(f"Crop en el plano: {crop_mm:.0f}mm ({crop_mm/10:.1f}cm)")
 
-    worker_args = [(a, args.dicom_root, args.output_dir, args.crop_mm) for a in anonids]
+    worker_args = [(a, args.dicom_root, args.output_dir, crop_mm, args.anatomy) for a in anonids]
 
     resultados = []
     if args.workers == 1:

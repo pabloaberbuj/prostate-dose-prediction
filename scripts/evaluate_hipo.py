@@ -65,6 +65,7 @@ sys.path.insert(0, str(_REPO_ROOT / "data"))
 
 from src.datamodules.dose_datamodule import DoseDataModule  # noqa: E402
 from src.models.lightning_module import DosePredictionModule  # noqa: E402
+from src.config.anatomy import load_experiment_config  # noqa: E402
 from compute_gt_dvh_hipo import volumen_pct_sobre_umbral, dosis_percentil, dosis_d01cc  # noqa: E402
 
 from evaluate import (cargar_modelo, figura_paciente, dose_score_openkbp, cargar_vol_ptv_cc,  # noqa: E402
@@ -644,7 +645,12 @@ def run_hipo_evaluation(args):
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(exist_ok=True)
 
-    cfg = OmegaConf.load(config_path)
+    # load_experiment_config agrega cfg.anatomy_schema (default "prostate" si el
+    # experimento no declara anatomy:) — necesario porque DosePredictionModule /
+    # DoseDataModule lo requieren desde el refactor a anatomy schema. NO se toca
+    # OPERATIONAL_CONSTRAINTS (más abajo): sigue siendo su propia fuente de verdad,
+    # congelada, independiente de cfg.anatomy_schema.constraints.
+    cfg = load_experiment_config(config_path)
 
     # Overrides: los datos de evaluación SIEMPRE son el dataset hipo, sin importar
     # en qué dataset se entrenó el checkpoint (permite zero-shot normo -> hipo).

@@ -1,17 +1,32 @@
 # Configuracion de la herramienta de tomografo.
 # Ver PROMPT_herramienta_tomografo_app.md para el detalle de cada parametro.
 
-# Carpeta a monitorear (donde el tomografo/PACS deja el CT+RS del autocontour).
-# Editar esta linea con la carpeta real -- mientras quede con el valor de ejemplo
-# de abajo, app.py NO inicia el monitoreo automatico (queda solo la apertura manual).
-# TEMPORAL: carpeta de pruebas en esta PC, mientras se define la carpeta final en el
-# tomografo del centro.
-watch_folder: "C:/Pablo/Prueba Herramienta Tomo"
+# Carpeta a monitorear -- carpeta REAL compartida donde el tomografo exporta el CT y
+# Autocontour manda el RS, ANTES del import a Eclipse (recibe todas las
+# localizaciones/tecnicas del centro, no solo prostata -- ver filtro_localizacion
+# abajo).
+watch_folder: "\\\\ARIAMEVADB-SVR\\va_data$\\DICOM"
 
-inactivity_timeout_sec: 5       # Capa 1: sin archivos nuevos por esto -> dispara chequeo
-rs_extra_timeout_sec: 60        # Capa 2: espera extra especifica si todavia no llego el RS
-file_stability_check_sec: 1     # segundos entre lectura y relectura de tamano de archivo
+# Filtro de localizacion (0008,1030 StudyDescription, normalizado sin mayusculas ni
+# acentos): solo se procesan carpetas que matcheen algun termino de "incluir" Y
+# NINGUNO de "excluir". Configurable -- sumar terminos aca, no en el codigo.
+# "prost" cubre descripciones truncadas/abreviadas (confirmado en el piloto:
+# 16-12211-0 = "IMRT PROST" no matcheaba con solo "prostata" y se perdia). "lecho"
+# excluye lecho prostatico (post-prostatectomia) -- fuera de alcance del modelo,
+# igual que la contaminacion nodal ya documentada (confirmado en el piloto:
+# 1-120230-0 = "IMRT LECHO PROSTATA" traia CTV_LN_Pelvics + CTV_ProstateBed).
+filtro_localizacion:
+  incluir: ["prostata", "prost"]
+  excluir: ["igrt", "sbrt", "areas", "lecho"]
+
+inactivity_timeout_sec: 15      # Capa 1: sin archivos nuevos por esto -> dispara chequeo (subido: recurso de red, no disco local)
+rs_extra_timeout_sec: 90        # Capa 2: espera extra especifica si todavia no llego el RS
+file_stability_check_sec: 3     # segundos entre lectura y relectura de tamano de archivo
 poll_interval_sec: 2            # cada cuanto corre el loop propio de Capa 2
+min_checks_estables_consecutivos: 2   # la estabilidad tiene que sostenerse por N ciclos de poll seguidos antes de dar la carpeta por lista
+
+pruning_check_interval_sec: 3600   # cada cuanto podar candidatas ya resueltas (1h)
+pruning_age_days: 2                # antiguedad (sin actividad) para podar
 
 host: "0.0.0.0"
 port: 5000

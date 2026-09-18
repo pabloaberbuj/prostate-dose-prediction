@@ -5,6 +5,7 @@ Callbacks personalizados para logging a W&B:
 """
 
 import io
+import itertools
 
 import matplotlib
 matplotlib.use('Agg')
@@ -13,6 +14,13 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import wandb
+from omegaconf import OmegaConf
+
+# Paleta cíclica para DVHLoggingCallback — antes 'PTV'=blue/'Rectum'=red/'Bladder'=cyan
+# hardcodeado (3 colores fijos); con anatomías de más de 3 estructuras hace falta un
+# esquema que no dependa de nombres fijos. Los primeros 3 colores reproducen el orden
+# de próstata para no cambiar el aspecto visual de los runs existentes.
+_DVH_COLOR_CYCLE = ['blue', 'red', 'cyan', 'green', 'orange', 'purple', 'brown']
 
 
 def _calcular_dvh(dosis_3d: np.ndarray, mascara: np.ndarray,
@@ -62,10 +70,22 @@ class EpochSummaryCallback(pl.Callback):
 class DVHLoggingCallback(pl.Callback):
     """Loguea N DVHs comparativos a W&B cada `every_n_epochs`."""
 
-    def __init__(self, every_n_epochs: int = 5, num_samples: int = 3):
+    def __init__(self, every_n_epochs: int = 5, num_samples: int = 3, structures: list = None):
         super().__init__()
         self.every_n_epochs = every_n_epochs
         self.num_samples = num_samples
+        # Estructuras no-body a graficar (ver anatomy schema, src/config/anatomy.py).
+        # train.py siempre pasa `structures=cfg.anatomy_schema.structures` (lista de
+        # DictConfig con .key/.role); default None solo por si algún llamador viejo
+        # (tests, notebooks) no las pasa todavía — reproduce el próstata hardcodeado
+        # de antes del refactor.
+        if structures is None:
+            structures = OmegaConf.create([
+                {'key': 'ptv', 'role': 'target'},
+                {'key': 'rectum', 'role': 'oar'},
+                {'key': 'bladder', 'role': 'oar'},
+            ])
+        self.structures = [s for s in structures if s.role != 'body']
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         if (trainer.current_epoch + 1) % self.every_n_epochs != 0:
@@ -75,20 +95,16 @@ class DVHLoggingCallback(pl.Callback):
         batch = pl_module._val_first_batch
         pred   = batch['pred'].numpy()    # (B, Z, H, W)
         target = batch['target'].numpy()
-        ptv    = batch['batch']['ptv_mask'].numpy()
-        rec    = batch['batch']['rectum_mask'].numpy()
-        bla    = batch['batch']['bladder_mask'].numpy()
+        masks  = {s.key: batch['batch'][f'{s.key}_mask'].numpy() for s in self.structures}
         anonids = batch['batch']['anonid']
 
         n = min(self.num_samples, pred.shape[0])
         fig, axes = plt.subplots(1, n, figsize=(5 * n, 4), squeeze=False)
         for i in range(n):
             ax = axes[0, i]
-            for nombre, mask_v, color in [
-                ('PTV',     ptv[i],    'blue'),
-                ('Rectum',  rec[i],    'red'),
-                ('Bladder', bla[i],    'cyan'),
-            ]:
+            for s, color in zip(self.structures, itertools.cycle(_DVH_COLOR_CYCLE)):
+                nombre = s.key.capitalize()
+                mask_v = masks[s.key][i]
                 if mask_v.sum() == 0:
                     continue
                 bins_r, vol_r = _calcular_dvh(target[i], mask_v)
@@ -118,10 +134,18 @@ class DVHLoggingCallback(pl.Callback):
 class SliceLoggingCallback(pl.Callback):
     """Loguea cortes axiales (real vs predicho vs diff) a W&B cada N epochs."""
 
-    def __init__(self, every_n_epochs: int = 10, num_samples: int = 3):
+    def __init__(self, every_n_epochs: int = 10, num_samples: int = 3,
+                 structures: list = None, primary_target: str = 'ptv'):
         super().__init__()
         self.every_n_epochs = every_n_epochs
         self.num_samples = num_samples
+        # train.py siempre pasa structures=cfg.anatomy_schema.structures y
+        # primary_target=cfg.anatomy_schema.primary_target; defaults = próstata
+        # (comportamiento pre-refactor) por si algún llamador viejo no los pasa.
+        if structures is None:
+            structures = OmegaConf.create([{'key': 'body', 'role': 'body'}])
+        self.body_key = next((s.key for s in structures if s.role == 'body'), 'body')
+        self.primary_target = primary_target
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         if (trainer.current_epoch + 1) % self.every_n_epochs != 0:
@@ -132,16 +156,16 @@ class SliceLoggingCallback(pl.Callback):
         pred   = batch['pred'].numpy()
         target = batch['target'].numpy()
         ct     = batch['batch']['ct'].numpy()
-        body   = batch['batch']['body_mask'].numpy()
+        body   = batch['batch'][f'{self.body_key}_mask'].numpy()
         anonids = batch['batch']['anonid']
 
         n = min(self.num_samples, pred.shape[0])
         fig, axes = plt.subplots(n, 3, figsize=(11, 3.5 * n), squeeze=False)
         for i in range(n):
-            # Encontrar corte axial con más PTV
-            ptv_v = batch['batch']['ptv_mask'][i].numpy()
-            slices_con_ptv = np.where(ptv_v.sum(axis=(1,2)) > 0)[0]
-            z = slices_con_ptv[len(slices_con_ptv)//2] if len(slices_con_ptv) > 0 else pred.shape[1]//2
+            # Encontrar corte axial con más presencia del target primario
+            target_v = batch['batch'][f'{self.primary_target}_mask'][i].numpy()
+            slices_con_target = np.where(target_v.sum(axis=(1, 2)) > 0)[0]
+            z = slices_con_target[len(slices_con_target)//2] if len(slices_con_target) > 0 else pred.shape[1]//2
 
             real_s = target[i, z]
             pred_s = pred[i,   z]

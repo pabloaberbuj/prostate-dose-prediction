@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.datamodules.dose_datamodule import DoseDataModule
 from src.models.lightning_module import DosePredictionModule
+from src.config.anatomy import load_experiment_config
 
 
 # Prescripción del dataset normofraccionado (única que usa este script — el
@@ -128,22 +129,25 @@ def dvh_metrics(dose: np.ndarray, mask: np.ndarray, vol_struct_cc: float = None)
 
 
 def evaluar_constraints(metricas_predichas: dict, constraints_cfg) -> dict:
-    """Evalúa cumplimiento de constraints clínicos a partir de las métricas predichas."""
+    """
+    Evalúa cumplimiento de constraints clínicos a partir de las métricas predichas.
+    Genérico sobre estructuras: itera constraints_cfg (dict {estructura: {metrica_max_pct: umbral}})
+    en vez de acceder .rectum/.bladder por atributo fijo — reproduce EXACTO el mismo
+    naming de columnas de salida (ej. "rectum_V70_cumple") para rectum/bladder V70/V65.
+    Solo evalúa claves que terminan en "_max_pct" (dmean_max_gy y d95_target_pct son
+    de solo registro, igual que antes — nunca se evaluaban acá).
+    """
     out = {}
-    # Recto
-    if "rectum" in metricas_predichas:
-        r = metricas_predichas["rectum"]
-        if constraints_cfg.rectum.v70_max_pct is not None:
-            out["rectum_V70_cumple"] = r["V70"] <= constraints_cfg.rectum.v70_max_pct
-        if constraints_cfg.rectum.v65_max_pct is not None:
-            out["rectum_V65_cumple"] = r["V65"] <= constraints_cfg.rectum.v65_max_pct
-    # Vejiga
-    if "bladder" in metricas_predichas:
-        b = metricas_predichas["bladder"]
-        if constraints_cfg.bladder.v70_max_pct is not None:
-            out["bladder_V70_cumple"] = b["V70"] <= constraints_cfg.bladder.v70_max_pct
-        if constraints_cfg.bladder.v65_max_pct is not None:
-            out["bladder_V65_cumple"] = b["V65"] <= constraints_cfg.bladder.v65_max_pct
+    for nombre, cfg_estructura in constraints_cfg.items():
+        if nombre not in metricas_predichas:
+            continue
+        m = metricas_predichas[nombre]
+        for metric_key, umbral in cfg_estructura.items():
+            if umbral is None or not metric_key.endswith("_max_pct"):
+                continue
+            dvh_key = metric_key[: -len("_max_pct")].upper()  # 'v70_max_pct' -> 'V70'
+            if dvh_key in m:
+                out[f"{nombre}_{dvh_key}_cumple"] = m[dvh_key] <= umbral
     return out
 
 
@@ -418,7 +422,14 @@ def main():
     if args.config is None or args.output_dir is None:
         parser.error("--config y --output-dir son obligatorios con --dataset normo")
 
-    cfg = OmegaConf.load(args.config)
+    cfg = load_experiment_config(args.config)
+
+    # PRESCRIPCION_GY_NORMO es un global leído por dvh_metrics() en cada llamada —
+    # setearlo acá (antes de evaluar pacientes) generaliza la prescripción sin tocar
+    # la firma de esa función en sus ~10 puntos de uso. Default (sin anatomy: en el
+    # YAML) = 78.0, igual que antes del refactor a anatomy schema.
+    global PRESCRIPCION_GY_NORMO
+    PRESCRIPCION_GY_NORMO = cfg.anatomy_schema.prescription.dose_gy
 
     # Overrides para evaluación: sin cache (no necesitamos train/val en RAM)
     cfg.data.cache_train = False
@@ -489,9 +500,15 @@ def main():
         ds_val  = dose_score_openkbp(dose_real, dose_pred, body)
         dvh_val = dvh_score_openkbp(m_real, m_pred, ["ptv", "rectum", "bladder"])
 
-        # Cumplimiento de constraints (real y predicho)
-        cumple_real = evaluar_constraints(m_real, cfg.constraints)
-        cumple_pred = evaluar_constraints(m_pred, cfg.constraints)
+        # Cumplimiento de constraints (real y predicho). Precedencia: si el
+        # experimento trae su propio cfg.constraints (todos los YAML existentes lo
+        # traen), manda ese para reproducibilidad exacta de runs históricos; si no
+        # (anatomías nuevas sin ese bloque), cae a cfg.anatomy_schema.constraints.
+        constraints_cfg = cfg.get("constraints", None)
+        if constraints_cfg is None:
+            constraints_cfg = cfg.anatomy_schema.constraints
+        cumple_real = evaluar_constraints(m_real, constraints_cfg)
+        cumple_pred = evaluar_constraints(m_pred, constraints_cfg)
 
         # MAEs por estructura
         mae_body    = float((np.abs(dose_pred - dose_real) * body).sum()

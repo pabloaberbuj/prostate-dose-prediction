@@ -1,0 +1,80 @@
+# ============================================================
+# Anatomy schema — Pulmón (EJEMPLO/JUGUETE, valores ilustrativos).
+# Sirve para validar que el pipeline generalizado corre end-to-end con una
+# anatomía distinta de próstata (más estructuras, otros umbrales). NO usar en
+# clínica sin que un físico/planificador revise y calibre estos valores.
+# ============================================================
+
+anatomy:
+  name: lung
+  description: "Pulmón — ejemplo de referencia para nueva localización (valores ilustrativos, revisar antes de uso clínico)"
+
+  primary_target: ptv
+
+  structures:
+    - key: ptv
+      role: target
+      dicom_aliases: ["PTV", "PTV_Lung", "PTV_Total"]
+      required: true
+      input_channels: {mask: true, psdm: true}
+    - key: body
+      role: body
+      dicom_aliases: ["BODY", "External", "Body"]
+      required: false
+      input_channels: {mask: true, psdm: false}
+    - key: lung_ipsilateral
+      role: oar
+      dicom_aliases: ["Lung_Ipsi", "Lung_R", "Lung_L"]
+      required: false
+      input_channels: {mask: true, psdm: true}
+    - key: lung_contralateral
+      role: oar
+      dicom_aliases: ["Lung_Contra", "Lung_L", "Lung_R"]
+      required: false
+      input_channels: {mask: true, psdm: true}
+    - key: heart
+      role: oar
+      dicom_aliases: ["Heart"]
+      required: false
+      input_channels: {mask: true, psdm: true}
+    - key: esophagus
+      role: oar
+      dicom_aliases: ["Esophagus", "Esofago"]
+      required: false
+      input_channels: {mask: true, psdm: false}
+    - key: spinal_cord
+      role: oar
+      dicom_aliases: ["SpinalCord", "Cord", "Medula"]
+      required: false
+      input_channels: {mask: true, psdm: true}
+
+  z_crop_roi_keys: [ptv, lung_ipsilateral, lung_contralateral, heart, esophagus, spinal_cord]
+
+  prescription:
+    dose_gy: 60.0
+    num_fractions: 30
+
+  preprocessing:
+    ct_hu_min: -1000.0
+    ct_hu_max: 1500.0
+    inplane_size: 256
+    z_margin_slices: 8      # tórax necesita más margen — valor de ejemplo, calibrar
+    psdm_norm_cm: 15.0
+    inplane_crop_mm: 400.0  # placeholder — calibrar igual que se hizo para próstata
+
+  constraints:
+    ptv:
+      d95_target_pct: 100.0
+    lung_ipsilateral:
+      v20gy_max_pct: 35.0
+      dmean_max_gy: 20.0
+    lung_contralateral:
+      v20gy_max_pct: 10.0
+      dmean_max_gy: 10.0
+    heart:
+      v30gy_max_pct: 40.0
+      dmean_max_gy: 26.0
+    esophagus:
+      dmean_max_gy: 34.0
+    spinal_cord:
+      dmax_max_gy: 50.0

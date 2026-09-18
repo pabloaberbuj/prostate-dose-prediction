@@ -15,6 +15,7 @@ from torch.utils.checkpoint import checkpoint
 
 from src.models.unet2d import build_model
 from src.losses.losses import CombinedLoss
+from src.config.anatomy import load_anatomy
 
 
 class DosePredictionModule(pl.LightningModule):
@@ -26,6 +27,19 @@ class DosePredictionModule(pl.LightningModule):
 
         self.model = build_model(cfg)
         self.loss_fn = CombinedLoss(cfg)
+
+        # Estructuras de la anatomía (ver src/config/anatomy.py) — reemplaza los nombres
+        # hardcodeados 'ptv'/'rectum'/'bladder' que tenía este módulo antes del refactor
+        # a anatomy schema. train.py/evaluate.py/evaluate_hipo.py ya cargan el config
+        # con load_experiment_config() (que agrega cfg.anatomy_schema); este fallback
+        # es solo para callers que todavía instancian con OmegaConf.load() directo
+        # (algunos scripts auxiliares fuera del alcance de este refactor) — reproduce
+        # el comportamiento de próstata de antes en vez de romper con AttributeError.
+        anatomy_schema = cfg.get("anatomy_schema", None) if hasattr(cfg, "get") else None
+        if anatomy_schema is None:
+            anatomy_schema = load_anatomy("prostate")
+        self.structures = anatomy_schema.structures
+        self.primary_target = anatomy_schema.primary_target
 
         # Tracking de mejores métricas
         self.best_val_mae = float('inf')
@@ -60,27 +74,29 @@ class DosePredictionModule(pl.LightningModule):
         context_slices = getattr(self.cfg.data, 'context_slices', 1)
         k = (context_slices - 1) // 2
 
+        # Estructuras no-body en el orden declarado por el anatomy schema (para
+        # "prostate" es [ptv, rectum, bladder] — mismo orden que el bloque
+        # hardcodeado que reemplaza esto, así que el orden de canales del modelo
+        # ya entrenado no cambia).
+        no_body = [s for s in self.structures if s.role != 'body']
+        body_key = next((s.key for s in self.structures if s.role == 'body'), None)
+
         canales = []
         for offset in range(-k, k + 1):
             canales.append(self._shift_z(batch['ct'], offset).unsqueeze(2))
 
-            if self.cfg.data.inputs.use_body_mask:
-                canales.append(self._shift_z(batch['body_mask'], offset).unsqueeze(2))
+            if self.cfg.data.inputs.use_body_mask and body_key is not None:
+                canales.append(self._shift_z(batch[f'{body_key}_mask'], offset).unsqueeze(2))
 
             if self.cfg.data.inputs.use_psdm:
-                if 'psdm_ptv' in batch:
-                    canales.append(self._shift_z(batch['psdm_ptv'], offset).unsqueeze(2))
-                if 'psdm_rectum' in batch:
-                    canales.append(self._shift_z(batch['psdm_rectum'], offset).unsqueeze(2))
-                if 'psdm_bladder' in batch:
-                    canales.append(self._shift_z(batch['psdm_bladder'], offset).unsqueeze(2))
+                for s in no_body:
+                    key = f'psdm_{s.key}'
+                    if key in batch:
+                        canales.append(self._shift_z(batch[key], offset).unsqueeze(2))
             else:
-                if self.cfg.data.inputs.use_ptv_mask:
-                    canales.append(self._shift_z(batch['ptv_mask'], offset).unsqueeze(2))
-                if self.cfg.data.inputs.use_rectum_mask:
-                    canales.append(self._shift_z(batch['rectum_mask'], offset).unsqueeze(2))
-                if self.cfg.data.inputs.use_bladder_mask:
-                    canales.append(self._shift_z(batch['bladder_mask'], offset).unsqueeze(2))
+                for s in no_body:
+                    if getattr(self.cfg.data.inputs, f'use_{s.key}_mask', False):
+                        canales.append(self._shift_z(batch[f'{s.key}_mask'], offset).unsqueeze(2))
 
         # Concatenar a lo largo del canal: (B, Z, C, H, W)
         return torch.cat(canales, dim=2)
@@ -122,9 +138,9 @@ class DosePredictionModule(pl.LightningModule):
         body_mask = batch['body_mask']
 
         struct_masks = {
-            'ptv':     batch['ptv_mask'],
-            'rectum':  batch['rectum_mask'],
-            'bladder': batch['bladder_mask'],
+            s.key: batch[f'{s.key}_mask']
+            for s in self.structures
+            if s.role != 'body' and f'{s.key}_mask' in batch
         }
         losses = self.loss_fn(pred, target, body_mask, struct_masks)
 
@@ -200,14 +216,13 @@ class DosePredictionModule(pl.LightningModule):
             metricas[f'dmean_err_{nombre}'] = (pred_mean - target_mean).abs().item()
         return metricas
 
-    @staticmethod
-    def _calcular_dvh_score(pred: torch.Tensor, target: torch.Tensor,
+    def _calcular_dvh_score(self, pred: torch.Tensor, target: torch.Tensor,
                             struct_masks: dict) -> torch.Tensor:
         """
         DVH score estilo OpenKBP: promedio de |Δ| entre pred y target sobre
-        D2/D95/D99 (PTV) y Dmean/Dmax (OARs). Mismo criterio que evaluate.py,
-        para poder comparar runs de entrenamiento (val/dvh_score) contra
-        resultados de test sin recalcular todo post-hoc.
+        D2/D95/D99 (target primario) y Dmean/Dmax (OARs). Mismo criterio que
+        evaluate.py, para poder comparar runs de entrenamiento (val/dvh_score)
+        contra resultados de test sin recalcular todo post-hoc.
         Asume batch_size=1 (decisión de diseño por VRAM) — si hay más de un
         paciente en el batch, mezcla sus voxeles al calcular percentiles.
         """
@@ -218,7 +233,7 @@ class DosePredictionModule(pl.LightningModule):
                 continue
             pred_roi = pred[roi].float()   # torch.quantile no soporta float16 (AMP)
             tgt_roi  = target[roi].float()
-            if nombre == 'ptv':
+            if nombre == self.primary_target:
                 for q in (0.98, 0.05, 0.01):  # D2, D95, D99
                     errores.append((torch.quantile(pred_roi, q)
                                      - torch.quantile(tgt_roi, q)).abs())

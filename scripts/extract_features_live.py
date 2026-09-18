@@ -56,10 +56,17 @@ def _mascara_de(estructuras: dict, nombre: str, imagen_ct):
     return contornos_a_mascara(estructuras[nombre], imagen_ct)
 
 
-def extraer_features(carpeta_dicom: Path, config: dict = None) -> dict:
+def extraer_features(carpeta_dicom: Path, config: dict = None, imagen_ct_precargada=None) -> dict:
     """Extrae las 7 features geometricas desde CT+RS DICOM en la grilla NATIVA (sin
     downsample). Devuelve dict {feature: valor} en el mismo orden/nombres que
-    data/dataset_p1.csv, listo para pasar a los modelos de models/proyecto1/."""
+    data/dataset_p1.csv, listo para pasar a los modelos de models/proyecto1/.
+
+    `imagen_ct_precargada`: sitk.Image ya cargado (via cargar_ct), opcional. Si se
+    pasa, se usa directo y se saltea el cargar_ct(carpeta_dicom) interno -- pensado
+    para tomografo_tool/watcher.py, que puede precargar el CT mientras espera a que
+    llegue el RS (el CT tipicamente llega minutos antes). El RS SIEMPRE se lee fresco
+    de `carpeta_dicom` (nunca se cachea)."""
+    carpeta_dicom = Path(carpeta_dicom)
     config = config or cargar_config()
     nombres = config["estructuras"]
     faltantes = [k for k, v in nombres.items() if not v]
@@ -70,7 +77,7 @@ def extraer_features(carpeta_dicom: Path, config: dict = None) -> dict:
             f"de poder correr esto en un caso real."
         )
 
-    imagen_ct = cargar_ct(carpeta_dicom)
+    imagen_ct = imagen_ct_precargada if imagen_ct_precargada is not None else cargar_ct(carpeta_dicom)
     estructuras = cargar_estructuras(carpeta_dicom)
 
     mask_ptv = _mascara_de(estructuras, nombres["ptv"], imagen_ct)

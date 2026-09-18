@@ -1,0 +1,86 @@
+# ============================================================
+# Config de EJEMPLO/JUGUETE — demuestra cómo declarar una anatomía nueva
+# (`anatomy: lung`, ver configs/anatomy/lung.yaml) en un YAML de experimento.
+# NO es un experimento real: usa datos sintéticos de smoke-test, arquitectura
+# achicada a propósito para correr rápido. Sirve de plantilla para copiar al
+# entrenar una localización nueva — ver docs/CLI_INSTRUCTIVO.md.
+# ============================================================
+
+experiment:
+  name: exp_lung_toy_example
+  description: "Ejemplo de juguete: anatomia lung (7 estructuras) con datos sinteticos, solo para --fast-dev-run"
+  seed: 42
+
+# anatomy: selecciona el schema de configs/anatomy/lung.yaml — es la única línea
+# que cambia respecto a un experimento de próstata para usar otra localización.
+anatomy: lung
+
+data:
+  processed_dir: "REEMPLAZAR_con_ruta_a_tus_NPZ"
+  splits_file: "REEMPLAZAR_con_ruta_a_tu_splits.json"
+  fold: 0
+
+  inputs:
+    use_ct: true
+    use_body_mask: true
+    use_ptv_mask: false
+    use_rectum_mask: false     # nombres use_<estructura>_mask son genéricos por
+    use_bladder_mask: false    # estructura declarada en anatomy.structures — para
+                               # "lung" no aplican (no hay rectum/bladder), quedan
+                               # en false sin efecto. Ver anatomy_schema.structures
+                               # para los use_<key>_mask reales de esta anatomía
+                               # (use_psdm=true los reemplaza a todos igual).
+    use_psdm: true
+    use_psdm_normalize_cm: 15.0
+
+  batch_size: 1
+  num_workers: 0
+  pin_memory: false
+  cache_train: false
+  cache_val: false
+
+augmentation:
+  flip_lr_prob: 0.0
+  rotation_degrees: 0
+  intensity_jitter_hu: 0
+
+model:
+  arch: "unet2d"
+  in_channels: 7   # CT + BODY + PSDM x5 (ptv, lung_ipsilateral, lung_contralateral, heart, spinal_cord — esophagus no aporta psdm en este ejemplo)
+  out_channels: 1
+  base_features: 8
+  depth: 2
+  upsample_mode: "bilinear"
+  dropout: 0.0
+  context_slices: 1
+
+loss:
+  mae_weight: 1.0
+  use_moment_loss: false
+  moment_weight: 0.01
+
+optimizer:
+  name: "adamw"
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+
+scheduler:
+  name: "cosine"
+  warmup_epochs: 0
+  max_epochs: 1
+
+training:
+  max_epochs: 1
+  precision: "32-true"
+  accumulate_grad_batches: 1
+  gradient_clip_val: 1.0
+  early_stopping_patience: 1
+  monitor_metric: "val/mae"
+  monitor_mode: "min"
+
+logging:
+  wandb_project: "dosekbp-toy"
+  wandb_entity: null
+  log_dvh_every_n_epochs: 1
+  log_visual_every_n_epochs: 1
+  num_visual_samples: 1

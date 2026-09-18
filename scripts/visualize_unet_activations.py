@@ -27,6 +27,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from omegaconf import OmegaConf
+from scipy.special import expit
 from sklearn.decomposition import PCA
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -36,6 +37,10 @@ from evaluate import cargar_modelo  # noqa: E402
 from predict_one import cargar_npz_paciente  # noqa: E402
 
 DOSE_MAX_PCT = 120.0  # rango de colormap para output/GT, en % de prescripción
+
+# Ancho de la transicion glow del overlay PSDM, en unidades PSDM normalizadas
+# (psdm_normalize_cm=15.0 -> tau=0.04 equivale a ~0.6cm de zona de transicion).
+PSDM_GLOW_TAU = 0.04
 
 # (nombre_capa, ruta_al_submodulo dentro de model.model — ver src/models/unet2d.py)
 LAYER_SPECS = [
@@ -111,9 +116,9 @@ def guardar_frame(imagen: np.ndarray, titulo: str, out_path: Path, cmap: str = N
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--patient-id", default="PT_17f7da3f2f357e52")
-    parser.add_argument("--checkpoint", default="checkpoints/exp_hipo_002b_finetune_clean/epoch=028.ckpt")
-    parser.add_argument("--config", default="configs/exp_hipo_002b_finetune_clean.yaml")
-    parser.add_argument("--splits-file", default="data/splits/splits_hipo_v2_clean_balanced.json")
+    parser.add_argument("--checkpoint", default="checkpoints/exp_hipo_004_finetune_ctfix_v4/epoch=014.ckpt")
+    parser.add_argument("--config", default="configs/exp_hipo_004_finetune_ctfix_v4.yaml")
+    parser.add_argument("--splits-file", default="data/splits/splits_hipo_ctfix_v4.json")
     parser.add_argument("--output-dir", default="results/unet_activations")
     parser.add_argument("--slice-idx", type=int, default=None,
                          help="Indice de corte axial. Default: corte con mayor area de PTV.")
@@ -123,11 +128,15 @@ def main():
 
     with open(root / args.splits_file) as f:
         splits = json.load(f)
-    if args.patient_id not in splits.get("test", []):
-        raise RuntimeError(
-            f"{args.patient_id} no esta en el test set de {args.splits_file} "
-            f"(split limpio) — abortando para no visualizar un paciente fuera de test."
-        )
+    split_del_paciente = next(
+        (nombre for nombre in ("train", "val", "test") if args.patient_id in splits.get(nombre, [])),
+        None,
+    )
+    if split_del_paciente is None:
+        raise RuntimeError(f"{args.patient_id} no aparece en ningun split de {args.splits_file}.")
+    if split_del_paciente != "test":
+        print(f"AVISO: {args.patient_id} esta en split '{split_del_paciente}' de {args.splits_file}, "
+              f"no en test (el split cambio tras el fix de CT) — se visualiza igual por pedido explicito.")
 
     cfg = OmegaConf.load(root / args.config)
     torch.set_float32_matmul_precision("high")
@@ -186,8 +195,10 @@ def main():
     psdm_rectum = sample["psdm_rectum"][slice_idx].numpy()
     psdm_bladder = sample["psdm_bladder"][slice_idx].numpy()
     overlay = np.zeros((*psdm_rectum.shape, 3), dtype=np.float32)
-    overlay[..., 0] = (psdm_rectum < 0).astype(np.float32)
-    overlay[..., 1] = (psdm_bladder < 0).astype(np.float32)
+    # Sigmoide sobre el campo de distancia firmada (no un umbral binario tipo mask):
+    # ~1 en el interior de la estructura, ~0.5 en el borde, decae suave hacia afuera.
+    overlay[..., 0] = expit(-psdm_rectum / PSDM_GLOW_TAU)
+    overlay[..., 1] = expit(-psdm_bladder / PSDM_GLOW_TAU)
     guardar_frame(overlay, f"Input PSDM recto=R vejiga=G (corte {slice_idx}, resolucion {h_orig}x{w_orig})",
                   out_dir / f"{frame_idx:02d}_input_psdm.png")
     frame_idx += 1

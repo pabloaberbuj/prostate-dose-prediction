@@ -57,6 +57,7 @@ from preprocess import (  # noqa: E402
     CT_HU_MIN,
     CT_HU_MAX,
     OPCIONES_BODY,
+    load_anatomy,
 )
 
 # FOV definitivo (HIPOFX_KICKOFF.md / CLAUDE_CODE_CONTEXT.md, decision "NO reabrir"):
@@ -365,7 +366,18 @@ def main():
                          help=f"Lado de la caja de recorte en el plano, centrada en el "
                               f"centroide del PTV (default {INPLANE_CROP_MM_DEFAULT:.0f}mm, "
                               f"FOV definitivo decidido en HIPOFX_KICKOFF.md)")
+    parser.add_argument("--anatomy", default="prostate_hipo",
+                         help="Nombre (configs/anatomy/<nombre>.yaml) del anatomy schema — "
+                              "SOLO informativo/validación en esta etapa: procesar_paciente_hipo() "
+                              "sigue usando su propia lógica hardcodeada (PTV_ALIAS_PRIORITY, "
+                              "--crop-mm, etc.), no lee este schema todavía. Fusión pendiente, "
+                              "ver docs/subproyectos/02_unet_kbp_hipofraccionado.md.")
     args = parser.parse_args()
+
+    # Validar que el schema exista y loguear su nombre — no se usa (todavia) para
+    # derivar comportamiento, ver docstring de --anatomy arriba.
+    anatomy = load_anatomy(args.anatomy)
+    log.info(f"Anatomy (informativo, no aplicado aun): {anatomy.name} ({args.anatomy})")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

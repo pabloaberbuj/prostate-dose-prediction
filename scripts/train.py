@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.datamodules.dose_datamodule import DoseDataModule
 from src.models.lightning_module import DosePredictionModule
 from src.callbacks.logging_callbacks import DVHLoggingCallback, SliceLoggingCallback, EpochSummaryCallback
+from src.config.anatomy import load_experiment_config
 
 
 def parse_args():
@@ -44,7 +45,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    cfg = OmegaConf.load(args.config)
+    cfg = load_experiment_config(args.config)
     if args.processed_dir is not None:
         cfg.data.processed_dir = args.processed_dir
 
@@ -134,10 +135,13 @@ def main():
         DVHLoggingCallback(
             every_n_epochs=cfg.logging.log_dvh_every_n_epochs,
             num_samples=cfg.logging.num_visual_samples,
+            structures=cfg.anatomy_schema.structures,
         ),
         SliceLoggingCallback(
             every_n_epochs=cfg.logging.log_visual_every_n_epochs,
             num_samples=cfg.logging.num_visual_samples,
+            structures=cfg.anatomy_schema.structures,
+            primary_target=cfg.anatomy_schema.primary_target,
         ),
     ]
 

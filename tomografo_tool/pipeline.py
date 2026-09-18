@@ -93,7 +93,7 @@ def _carpeta_plana(carpeta: Path):
         yield tmp_path
 
 
-def procesar_paciente(carpeta: Path, on_fase=None) -> dict:
+def procesar_paciente(carpeta: Path, on_fase=None, imagen_ct_precargada=None) -> dict:
     """Punto de entrada unico de la herramienta. Extrae features (Tarea 7 en vivo),
     corre inferencia (modelos/umbrales del Proyecto 1), arma el dict de resultado,
     lo guarda en registros/ y lo devuelve. No lanza excepciones hacia el llamador:
@@ -106,7 +106,12 @@ def procesar_paciente(carpeta: Path, on_fase=None) -> dict:
     thread aparte. La primera inferencia de cada proceso de la app tarda bastante
     mas (~1-3s) que las siguientes por el import en frio de sklearn/joblib al
     cargar los .joblib por primera vez (confirmado con medicion); de ahi en mas
-    son ~20ms. Ver tambien el precalentado en app.py."""
+    son ~20ms. Ver tambien el precalentado en app.py.
+
+    imagen_ct_precargada: sitk.Image ya cargado, opcional -- ver
+    watcher.py (precarga el CT mientras espera el RS, que suele llegar minutos
+    despues). Se reenvia tal cual a extraer_features(); si es None, se carga el CT
+    de la forma habitual dentro de extraer_features()."""
     carpeta = Path(carpeta)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     patient_id = identificar_paciente(carpeta)
@@ -116,7 +121,7 @@ def procesar_paciente(carpeta: Path, on_fase=None) -> dict:
         config = cargar_config()
         on_fase("extrayendo_features")
         with _carpeta_plana(carpeta) as carpeta_plana:
-            feats = extraer_features(carpeta_plana, config)
+            feats = extraer_features(carpeta_plana, config, imagen_ct_precargada=imagen_ct_precargada)
         on_fase("corriendo_inferencia")
         resultado_modelo = predecir_paciente(feats)
         por_constraint = resultado_modelo["por_constraint"]
